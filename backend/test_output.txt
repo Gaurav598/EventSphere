@@ -1,0 +1,189 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-8.0.0, pluggy-1.6.0 -- /Users/gaurav/Downloads/3 Eventsphere/backend/venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/gaurav/Downloads/3 Eventsphere/backend
+configfile: pytest.ini
+plugins: asyncio-0.23.5, anyio-4.14.1
+asyncio: mode=Mode.AUTO
+collecting ... collected 1 item
+
+tests/integration/test_registration_flow.py::test_registration_flow 2026-07-05 23:56:14,686 - app.middleware.logging_middleware - INFO - POST /api/v1/auth/register - Status: 201 - Duration: 0.2380s
+2026-07-05 23:56:14,687 - httpx - INFO - HTTP Request: POST http://test/api/v1/auth/register "HTTP/1.1 201 Created"
+2026-07-05 23:56:14,691 - app.dependencies.rate_limit - WARNING - Rate limiter failed, failing open: unknown command `hello`, with args beginning with: 
+2026-07-05 23:56:14,913 - app.middleware.logging_middleware - INFO - POST /api/v1/auth/login - Status: 200 - Duration: 0.2247s
+2026-07-05 23:56:14,913 - httpx - INFO - HTTP Request: POST http://test/api/v1/auth/login "HTTP/1.1 200 OK"
+2026-07-05 23:56:15,087 - app.middleware.logging_middleware - INFO - POST /api/v1/auth/register - Status: 201 - Duration: 0.1742s
+2026-07-05 23:56:15,088 - httpx - INFO - HTTP Request: POST http://test/api/v1/auth/register "HTTP/1.1 201 Created"
+2026-07-05 23:56:15,088 - app.dependencies.rate_limit - WARNING - Rate limiter failed, failing open: unknown command `hello`, with args beginning with: 
+2026-07-05 23:56:15,262 - app.middleware.logging_middleware - INFO - POST /api/v1/auth/login - Status: 200 - Duration: 0.1744s
+2026-07-05 23:56:15,262 - httpx - INFO - HTTP Request: POST http://test/api/v1/auth/login "HTTP/1.1 200 OK"
+2026-07-05 23:56:15,267 - app.middleware.logging_middleware - INFO - POST /api/v1/admin/events - Status: 201 - Duration: 0.0047s
+2026-07-05 23:56:15,268 - httpx - INFO - HTTP Request: POST http://test/api/v1/admin/events "HTTP/1.1 201 Created"
+2026-07-05 23:56:15,268 - app.dependencies.rate_limit - WARNING - Rate limiter failed, failing open: unknown command `hello`, with args beginning with: 
+2026-07-05 23:56:15,268 - app.services.registration_service - WARNING - Failed to publish registration event to Redis: unknown command `hello`, with args beginning with: 
+2026-07-05 23:56:15,268 - app.middleware.logging_middleware - INFO - POST /api/v1/events/6a4aa1c761f803ce1c446f0c/register - Status: 200 - Duration: 0.0008s
+2026-07-05 23:56:15,278 - httpx - INFO - HTTP Request: POST http://test/api/v1/events/6a4aa1c761f803ce1c446f0c/register "HTTP/1.1 200 OK"
+2026-07-05 23:56:15,279 - app.middleware.logging_middleware - INFO - GET /api/v1/registrations/me - Status: 200 - Duration: 0.0004s
+2026-07-05 23:56:15,279 - httpx - INFO - HTTP Request: GET http://test/api/v1/registrations/me "HTTP/1.1 200 OK"
+FAILED
+
+=================================== FAILURES ===================================
+____________________________ test_registration_flow ____________________________
+
+async_client = <httpx.AsyncClient object at 0x10cf0c980>
+
+    @pytest.mark.asyncio
+    async def test_registration_flow(async_client: AsyncClient):
+        # 1. Register and login admin
+        await async_client.post("/api/v1/auth/register", json={
+            "name": "Admin", "email": "admin@example.com", "password": "pass", "role": "admin"
+        })
+        admin_login = await async_client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "pass"})
+        admin_token = admin_login.json()["data"]["accessToken"]
+    
+        # 2. Register and login user
+        await async_client.post("/api/v1/auth/register", json={
+            "name": "User", "email": "user@example.com", "password": "pass", "role": "user"
+        })
+        user_login = await async_client.post("/api/v1/auth/login", json={"email": "user@example.com", "password": "pass"})
+        user_token = user_login.json()["data"]["accessToken"]
+    
+        # 3. Create Event (as Admin)
+        event_data = {
+            "name": "Test Event",
+            "description": "Desc",
+            "category": "workshop",
+            "location": "Online",
+            "eventDate": "2026-10-01T10:00:00Z",
+            "registrationDeadline": "2026-09-30T23:59:59Z",
+            "capacity": 5
+        }
+        create_resp = await async_client.post(
+            "/api/v1/admin/events",
+            json=event_data,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert create_resp.status_code == 201
+        event_id = create_resp.json()["data"]["_id"]
+    
+        # 4. Register for event (as User)
+        reg_resp = await async_client.post(
+            f"/api/v1/events/{event_id}/register",
+            headers={"Authorization": f"Bearer {user_token}"}
+        )
+        assert reg_resp.status_code == 200
+        assert reg_resp.json()["data"]["status"] == "confirmed"
+    
+        # 5. Check my registrations
+        my_reg_resp = await async_client.get(
+            "/api/v1/registrations/me",
+            headers={"Authorization": f"Bearer {user_token}"}
+        )
+        assert my_reg_resp.status_code == 200
+>       assert len(my_reg_resp.json()["data"]) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests/integration/test_registration_flow.py:52: AssertionError
+------------------------------ Captured log call -------------------------------
+INFO     app.middleware.logging_middleware:logging_middleware.py:15 POST /api/v1/auth/register - Status: 201 - Duration: 0.2380s
+INFO     httpx:_client.py:1758 HTTP Request: POST http://test/api/v1/auth/register "HTTP/1.1 201 Created"
+WARNING  app.dependencies.rate_limit:rate_limit.py:39 Rate limiter failed, failing open: unknown command `hello`, with args beginning with: 
+INFO     app.middleware.logging_middleware:logging_middleware.py:15 POST /api/v1/auth/login - Status: 200 - Duration: 0.2247s
+INFO     httpx:_client.py:1758 HTTP Request: POST http://test/api/v1/auth/login "HTTP/1.1 200 OK"
+INFO     app.middleware.logging_middleware:logging_middleware.py:15 POST /api/v1/auth/register - Status: 201 - Duration: 0.1742s
+INFO     httpx:_client.py:1758 HTTP Request: POST http://test/api/v1/auth/register "HTTP/1.1 201 Created"
+WARNING  app.dependencies.rate_limit:rate_limit.py:39 Rate limiter failed, failing open: unknown command `hello`, with args beginning with: 
+INFO     app.middleware.logging_middleware:logging_middleware.py:15 POST /api/v1/auth/login - Status: 200 - Duration: 0.1744s
+INFO     httpx:_client.py:1758 HTTP Request: POST http://test/api/v1/auth/login "HTTP/1.1 200 OK"
+INFO     app.middleware.logging_middleware:logging_middleware.py:15 POST /api/v1/admin/events - Status: 201 - Duration: 0.0047s
+INFO     httpx:_client.py:1758 HTTP Request: POST http://test/api/v1/admin/events "HTTP/1.1 201 Created"
+WARNING  app.dependencies.rate_limit:rate_limit.py:39 Rate limiter failed, failing open: unknown command `hello`, with args beginning with: 
+WARNING  app.services.registration_service:registration_service.py:73 Failed to publish registration event to Redis: unknown command `hello`, with args beginning with: 
+INFO     app.middleware.logging_middleware:logging_middleware.py:15 POST /api/v1/events/6a4aa1c761f803ce1c446f0c/register - Status: 200 - Duration: 0.0008s
+INFO     httpx:_client.py:1758 HTTP Request: POST http://test/api/v1/events/6a4aa1c761f803ce1c446f0c/register "HTTP/1.1 200 OK"
+INFO     app.middleware.logging_middleware:logging_middleware.py:15 GET /api/v1/registrations/me - Status: 200 - Duration: 0.0004s
+INFO     httpx:_client.py:1758 HTTP Request: GET http://test/api/v1/registrations/me "HTTP/1.1 200 OK"
+=============================== warnings summary ===============================
+app/models/user.py:24
+  /Users/gaurav/Downloads/3 Eventsphere/backend/app/models/user.py:24: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(UserBase):
+
+app/models/event.py:38
+  /Users/gaurav/Downloads/3 Eventsphere/backend/app/models/event.py:38: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class EventResponse(EventBase):
+
+app/models/registration.py:15
+  /Users/gaurav/Downloads/3 Eventsphere/backend/app/models/registration.py:15: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class RegistrationResponse(RegistrationInDB):
+
+app/models/ticket.py:16
+  /Users/gaurav/Downloads/3 Eventsphere/backend/app/models/ticket.py:16: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class TicketResponse(TicketInDB):
+
+venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:168: 35 warnings
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:168: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(obj) or inspect.isasyncgenfunction(obj)
+
+venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:433
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:433: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(func)
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:1006: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:759: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/tests/conftest.py:13: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:769: DeprecationWarning: The event_loop fixture provided by pytest-asyncio has been redefined in
+  /Users/gaurav/Downloads/3 Eventsphere/backend/tests/conftest.py:11
+  Replacing the event_loop fixture with a custom implementation is deprecated
+  and will lead to errors in the future.
+  If you want to request an asyncio event loop with a scope other than function
+  scope, use the "scope" argument to the asyncio mark when marking the tests.
+  If you want to return different types of event loops, use the event_loop_policy
+  fixture.
+  
+    warnings.warn(
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:774: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/tests/conftest.py:24: DeprecationWarning: Call to '__init__' function with deprecated usage of input argument/s 'retry_on_timeout'. (TimeoutError is included by default.) -- Deprecated since version 6.0.0.
+    redis_client.redis_db.client = fakeredis.aioredis.FakeRedis(decode_responses=True, version=(6, 2))
+
+tests/integration/test_registration_flow.py::test_registration_flow
+tests/integration/test_registration_flow.py::test_registration_flow
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/jose/jwt.py:311: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = timegm(datetime.utcnow().utctimetuple())
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/tests/conftest.py:32: DeprecationWarning: Call to deprecated close. (Use aclose() instead) -- Deprecated since version 5.0.1.
+    await redis_client.redis_db.client.close()
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:821: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:847: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/integration/test_registration_flow.py::test_registration_flow
+  /Users/gaurav/Downloads/3 Eventsphere/backend/venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:859: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_registration_flow.py::test_registration_flow - ...
+======================== 1 failed, 53 warnings in 0.86s ========================

@@ -1,0 +1,52 @@
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.pub-cache/
+.pub/
+/frontend/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+/frontend/ios/Flutter/App.framework
+/frontend/ios/Flutter/Flutter.framework
+/frontend/ios/Flutter/Flutter.podspec
+/frontend/ios/Flutter/Generated.xcconfig
+/frontend/ios/Flutter/app.flx
+/frontend/ios/Flutter/app.zip
+/frontend/ios/Flutter/flutter_assets/
+/frontend/ios/Flutter/flutter_export_environment.sh
+/frontend/ios/ServiceDefinitions.json
+/frontend/ios/Runner/GeneratedPluginRegistrant.*
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.xcuserstate
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Docker
+docker-compose.override.yml

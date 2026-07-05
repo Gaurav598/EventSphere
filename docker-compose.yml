@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  fastapi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=development_secret_key_change_in_production_12345
+      - JWT_EXPIRE_MINUTES=1440
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./backend:/app
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+volumes:
+  mongo_data:
