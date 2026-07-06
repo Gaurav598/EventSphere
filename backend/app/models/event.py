@@ -33,6 +33,7 @@ class EventBase(BaseModel):
     registrationDeadline: datetime
     capacity: int = Field(gt=0, le=1_000_000)
     categoryFields: dict[str, Any] = Field(default_factory=dict)
+    isPrivate: bool = False
 
     _validate_datetimes = field_validator(
         "eventDate",
@@ -62,6 +63,7 @@ class EventUpdate(BaseModel):
     registrationDeadline: datetime | None = None
     capacity: int | None = Field(default=None, gt=0, le=1_000_000)
     categoryFields: dict[str, Any] | None = None
+    isPrivate: bool | None = None
 
     _validate_datetimes = field_validator(
         "eventDate",
@@ -77,6 +79,7 @@ class EventInDB(EventBase):
     registeredCount: int = 0
     isRegistrationOpen: bool = True
     isDeleted: bool = False
+    inviteCode: str | None = None
     createdBy: PyObjectId
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -87,6 +90,7 @@ class EventResponse(EventBase):
     registeredCount: int
     isRegistrationOpen: bool
     isDeleted: bool = False
+    inviteCode: str | None = None
     createdBy: PyObjectId
     createdAt: datetime
     updatedAt: datetime

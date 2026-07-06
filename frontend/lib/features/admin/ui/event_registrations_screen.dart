@@ -63,43 +63,97 @@ class _EventRegistrationsScreenState extends State<EventRegistrationsScreen> {
     }
   }
 
+  Future<void> _updateStatus(String regId, String status) async {
+    final provider = context.read<AdminProvider>();
+    final success = await provider.updateRegistrationStatus(regId, status);
+    if (success && mounted) {
+      await _loadRegistrations();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Registration $status!')),
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(provider.error ?? 'Failed to update status')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('${widget.event.name} Registrations'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.download),
-            onPressed: _exportCsv,
-            tooltip: 'Export CSV',
-          )
-        ],
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text('${widget.event.name} Registrations')),
+        body: const LoadingView(),
+      );
+    }
+
+    final confirmed = _registrations?.where((r) => r['status'] == 'confirmed').toList() ?? [];
+    final pending = _registrations?.where((r) => r['status'] == 'pending').toList() ?? [];
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('${widget.event.name} Registrations'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.download),
+              onPressed: _exportCsv,
+              tooltip: 'Export CSV',
+            )
+          ],
+          bottom: TabBar(
+            tabs: [
+              Tab(text: 'Confirmed (${confirmed.length})'),
+              Tab(text: 'Pending (${pending.length})'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildList(confirmed, false),
+            _buildList(pending, true),
+          ],
+        ),
       ),
-      body: _isLoading
-          ? const LoadingView()
-          : _registrations == null || _registrations!.isEmpty
-              ? const EmptyStateView(
-                  message: 'No registrations for this event yet.',
-                  icon: Icons.group_off,
+    );
+  }
+
+  Widget _buildList(List<Map<String, dynamic>> list, bool isPending) {
+    if (list.isEmpty) {
+      return EmptyStateView(
+        message: 'No ${isPending ? 'pending' : 'confirmed'} registrations.',
+        icon: Icons.group_off,
+      );
+    }
+    return ListView.builder(
+      itemCount: list.length,
+      itemBuilder: (context, index) {
+        final reg = list[index];
+        final user = reg['user'] as Map<String, dynamic>;
+        return ListTile(
+          title: Text(user['name'] ?? 'Unknown User'),
+          subtitle: Text(user['email'] ?? ''),
+          trailing: isPending
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.check, color: Colors.green),
+                      onPressed: () => _updateStatus(reg['_id'] ?? reg['id'], 'confirmed'),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.red),
+                      onPressed: () => _updateStatus(reg['_id'] ?? reg['id'], 'rejected'),
+                    ),
+                  ],
                 )
-              : ListView.builder(
-                  itemCount: _registrations!.length,
-                  itemBuilder: (context, index) {
-                    final reg = _registrations![index];
-                    final user = reg['user'] as Map<String, dynamic>;
-                    return ListTile(
-                      title: Text(user['name'] ?? 'Unknown User'),
-                      subtitle: Text(user['email'] ?? ''),
-                      trailing: Text(
-                        reg['status'] ?? '',
-                        style: TextStyle(
-                          color: reg['status'] == 'confirmed' ? Colors.green : Colors.grey,
-                        ),
-                      ),
-                    );
-                  },
+              : Text(
+                  reg['status']?.toUpperCase() ?? '',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                 ),
+        );
+      },
     );
   }
 }

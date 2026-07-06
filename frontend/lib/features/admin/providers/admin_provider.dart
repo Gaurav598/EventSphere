@@ -124,6 +124,20 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> updateRegistrationStatus(String regId, String status) async {
+    try {
+      await _adminService.updateRegistrationStatus(regId, status);
+      return true;
+    } catch (e) {
+      if (e is ApiException) {
+        _error = e.message;
+      } else {
+        _error = 'Failed to update registration status';
+      }
+      return false;
+    }
+  }
+
   Future<String?> exportRegistrations(String eventId) async {
     try {
       return await _adminService.exportRegistrations(eventId);

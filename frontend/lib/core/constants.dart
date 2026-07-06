@@ -1,5 +1,15 @@
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
+
 class Constants {
-  // Use 10.0.2.2 for Android emulator, 127.0.0.1 for iOS simulator / web
-  static const String baseUrl = 'http://127.0.0.1:8000/api/v1';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://127.0.0.1:8000/api/v1';
+    }
+    if (Platform.isAndroid) {
+      return 'http://10.0.2.2:8000/api/v1';
+    }
+    return 'http://127.0.0.1:8000/api/v1';
+  }
   static const String tokenKey = 'access_token';
 }

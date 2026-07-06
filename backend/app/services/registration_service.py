@@ -29,55 +29,81 @@ class RegistrationService:
         user_object_id = parse_object_id(user_id, "user")
         now = datetime.now(timezone.utc)
 
-        event = await db.events.find_one_and_update(
-            {
-                "_id": event_object_id,
-                "eventDate": {"$gt": now},
-                "registrationDeadline": {"$gte": now},
-                "$expr": {"$lt": ["$registeredCount", "$capacity"]},
-                "isRegistrationOpen": True,
-                "isDeleted": False,
-            },
-            {
-                "$inc": {"registeredCount": 1},
-                "$set": {"updatedAt": now},
-            },
-            return_document=ReturnDocument.AFTER,
-        )
-        if event is None:
-            await RegistrationService._raise_registration_blocker(event_object_id, now)
+        # Pre-fetch event to check if it's private
+        event = await db.events.find_one({"_id": event_object_id, "isDeleted": False})
+        if not event:
+            raise AppException(code="EVENT_NOT_FOUND", message="Event not found", status_code=404)
+            
+        is_private = event.get("isPrivate", False)
 
-        registration = RegistrationInDB(
-            userId=user_object_id,
-            eventId=event_object_id,
-        )
-        registration_document = registration.model_dump(
-            by_alias=True,
-            exclude={"id"},
-        )
+        if is_private:
+            # Private events bypass capacity checks and go to 'pending' state
+            if event.get("eventDate") and event["eventDate"] <= now:
+                raise AppException(code="EVENT_STARTED", message="This event has already started", status_code=400)
+            if event.get("registrationDeadline") and event["registrationDeadline"] < now:
+                raise AppException(code="REGISTRATION_DEADLINE_PASSED", message="The registration deadline has passed", status_code=400)
+            if not event.get("isRegistrationOpen"):
+                raise AppException(code="REGISTRATION_CLOSED", message="Registration is closed for this event", status_code=400)
+            
+            registration = RegistrationInDB(
+                userId=user_object_id,
+                eventId=event_object_id,
+                status="pending",
+            )
+        else:
+            # Public events atomically check capacity and increment
+            updated_event = await db.events.find_one_and_update(
+                {
+                    "_id": event_object_id,
+                    "eventDate": {"$gt": now},
+                    "registrationDeadline": {"$gte": now},
+                    "$expr": {"$lt": ["$registeredCount", "$capacity"]},
+                    "isRegistrationOpen": True,
+                    "isDeleted": False,
+                },
+                {
+                    "$inc": {"registeredCount": 1},
+                    "$set": {"updatedAt": now},
+                },
+                return_document=ReturnDocument.AFTER,
+            )
+            if updated_event is None:
+                await RegistrationService._raise_registration_blocker(event_object_id, now)
+
+            registration = RegistrationInDB(
+                userId=user_object_id,
+                eventId=event_object_id,
+                status="confirmed",
+            )
+
+        registration_document = registration.model_dump(by_alias=True, exclude={"id"})
         try:
             result = await db.registrations.insert_one(registration_document)
         except DuplicateKeyError as exc:
-            await RegistrationService._rollback_capacity(event_object_id)
+            if not is_private:
+                await RegistrationService._rollback_capacity(event_object_id)
             raise AppException(
                 code="ALREADY_REGISTERED",
                 message="User already registered for this event",
                 status_code=409,
             ) from exc
         except Exception:
-            await RegistrationService._rollback_capacity(event_object_id)
+            if not is_private:
+                await RegistrationService._rollback_capacity(event_object_id)
             raise
 
         await invalidate_event_cache()
-        await RegistrationService._publish_registration(
-            event_id=event_id,
-            user_id=user_id,
-            registration_id=str(result.inserted_id),
-            timestamp=registration.registeredAt,
-        )
+        if not is_private:
+            await RegistrationService._publish_registration(
+                event_id=event_id,
+                user_id=user_id,
+                registration_id=str(result.inserted_id),
+                timestamp=registration.registeredAt,
+            )
+            
         return {
             "registrationId": str(result.inserted_id),
-            "status": "confirmed",
+            "status": registration.status,
         }
 
     @staticmethod

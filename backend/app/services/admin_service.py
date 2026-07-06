@@ -1,6 +1,8 @@
 import asyncio
 import csv
 import io
+import random
+import string
 from datetime import datetime, timezone
 from typing import Any
 
@@ -62,6 +64,10 @@ class AdminService:
             **event_data.model_dump(),
             createdBy=parse_object_id(admin_id, "admin"),
         )
+        if event.isPrivate:
+            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            event.inviteCode = f"PRV-{code}"
+        
         event_document = event.model_dump(by_alias=True, exclude={"id"})
         result = await db.events.insert_one(event_document)
         created_event = await db.events.find_one({"_id": result.inserted_id})
@@ -197,6 +203,59 @@ class AdminService:
         await invalidate_event_cache()
 
     @staticmethod
+    async def update_registration_status(registration_id: str, new_status: str) -> dict[str, Any]:
+        from pymongo import ReturnDocument
+        db = get_database()
+        now = datetime.now(timezone.utc)
+        reg_obj_id = parse_object_id(registration_id, "registration")
+        
+        reg = await db.registrations.find_one({"_id": reg_obj_id})
+        if not reg:
+            raise AppException(code="REGISTRATION_NOT_FOUND", message="Registration not found", status_code=404)
+        
+        if reg.get("status") == new_status:
+            return {"status": new_status}
+            
+        event_id = reg["eventId"]
+        
+        if new_status == "confirmed":
+            # Atomically check capacity and increment
+            updated_event = await db.events.find_one_and_update(
+                {
+                    "_id": event_id,
+                    "$expr": {"$lt": ["$registeredCount", "$capacity"]},
+                    "isDeleted": False,
+                },
+                {
+                    "$inc": {"registeredCount": 1},
+                    "$set": {"updatedAt": now},
+                },
+                return_document=ReturnDocument.AFTER,
+            )
+            if not updated_event:
+                raise AppException(code="EVENT_FULL", message="Cannot confirm: Event is full or deleted", status_code=400)
+                
+            await db.registrations.update_one(
+                {"_id": reg_obj_id},
+                {"$set": {"status": "confirmed"}}
+            )
+        elif new_status == "rejected":
+            # If it was previously confirmed, we should decrement capacity. 
+            # But normally they go from pending -> rejected. Let's handle both.
+            if reg.get("status") == "confirmed":
+                await db.events.update_one(
+                    {"_id": event_id, "registeredCount": {"$gt": 0}},
+                    {"$inc": {"registeredCount": -1}, "$set": {"updatedAt": now}}
+                )
+            
+            await db.registrations.update_one(
+                {"_id": reg_obj_id},
+                {"$set": {"status": "rejected"}}
+            )
+            
+        return {"status": new_status}
+
+    @staticmethod
     async def get_event_registrations(
         event_id: str,
     ) -> list[dict[str, Any]]:
@@ -217,7 +276,8 @@ class AdminService:
             {"$sort": {"registeredAt": -1}},
         ]
         registrations = []
-        async for document in db.registrations.aggregate(pipeline):
+        cursor = await db.registrations.aggregate(pipeline)
+        async for document in cursor:
             registrations.append(
                 {
                     "registrationId": str(document["_id"]),
@@ -285,7 +345,8 @@ class AdminService:
             {"$unwind": "$event"},
         ]
         results = []
-        async for document in db.registrations.aggregate(pipeline):
+        cursor = await db.registrations.aggregate(pipeline)
+        async for document in cursor:
             results.append(
                 {
                     "eventId": str(document["_id"]),
@@ -320,9 +381,10 @@ class AdminService:
             },
             {"$sort": {"count": -1}},
         ]
+        cursor = await db.registrations.aggregate(pipeline)
         return [
             {"category": document["_id"], "count": document["count"]}
-            async for document in db.registrations.aggregate(pipeline)
+            async for document in cursor
         ]
 
     @staticmethod
@@ -343,9 +405,10 @@ class AdminService:
             },
             {"$sort": {"_id": 1}},
         ]
+        cursor = await db.registrations.aggregate(pipeline)
         return [
             {"month": document["_id"], "count": document["count"]}
-            async for document in db.registrations.aggregate(pipeline)
+            async for document in cursor
         ]
 
     @staticmethod

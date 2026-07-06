@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:frontend/core/api_client.dart';
 import 'package:frontend/core/secure_storage.dart';
 import 'package:frontend/features/auth/models/user.dart';
 import 'package:frontend/features/auth/services/auth_service.dart';
@@ -7,7 +9,8 @@ class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
   
   User? _user;
-  bool _isLoading = true;
+  bool _isInitializing = true;
+  bool _isLoading = false;
   String? _error;
 
   AuthProvider(this._authService) {
@@ -17,6 +20,7 @@ class AuthProvider extends ChangeNotifier {
   User? get user => _user;
   bool get isAuthenticated => _user != null;
   bool get isAdmin => _user?.role == 'admin';
+  bool get isInitializing => _isInitializing;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -30,7 +34,7 @@ class AuthProvider extends ChangeNotifier {
         _user = null;
       }
     }
-    _isLoading = false;
+    _isInitializing = false;
     notifyListeners();
   }
 
@@ -44,7 +48,11 @@ class AuthProvider extends ChangeNotifier {
       _setLoading(false);
       return true;
     } catch (e) {
-      _error = 'Login failed. Please check credentials.';
+      if (e is DioException && e.error is ApiException) {
+        _error = (e.error as ApiException).message;
+      } else {
+        _error = 'Login failed. Please check credentials.';
+      }
       _setLoading(false);
       return false;
     }
@@ -57,7 +65,11 @@ class AuthProvider extends ChangeNotifier {
       _setLoading(false);
       return true;
     } catch (e) {
-      _error = 'Registration failed. User might exist.';
+      if (e is DioException && e.error is ApiException) {
+        _error = (e.error as ApiException).message;
+      } else {
+        _error = 'Registration failed. User might exist.';
+      }
       _setLoading(false);
       return false;
     }

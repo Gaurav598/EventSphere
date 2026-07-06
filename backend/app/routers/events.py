@@ -83,6 +83,16 @@ async def search_events(
     }
 
 
+@router.get("/invite/{invite_code}")
+async def get_event_by_invite(invite_code: str):
+    result = await EventService.get_event_by_invite_code(invite_code)
+    return {
+        "success": True,
+        "data": result,
+        "message": "Event details retrieved successfully",
+    }
+
+
 @router.get("/{event_id}")
 async def get_event(event_id: str):
     result = await EventService.get_event(event_id)

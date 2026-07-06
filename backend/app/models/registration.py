@@ -11,7 +11,7 @@ class RegistrationBase(BaseModel):
 
     userId: PyObjectId
     eventId: PyObjectId
-    status: Literal["confirmed", "cancelled"] = "confirmed"
+    status: Literal["pending", "confirmed", "cancelled", "rejected"] = "confirmed"
 
 
 class RegistrationInDB(RegistrationBase):

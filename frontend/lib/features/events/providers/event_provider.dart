@@ -48,6 +48,19 @@ class EventProvider extends ChangeNotifier {
     }
   }
 
+  Future<String?> resolveInviteCode(String inviteCode) async {
+    _setLoading(true);
+    try {
+      final event = await _eventService.getEventByInviteCode(inviteCode);
+      _setLoading(false);
+      return event.id;
+    } catch (e) {
+      _error = 'Invalid invite code or event not found';
+      _setLoading(false);
+      return null;
+    }
+  }
+
   void _setLoading(bool value) {
     _isLoading = value;
     _error = null;

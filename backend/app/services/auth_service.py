@@ -22,7 +22,7 @@ class AuthService:
         new_user = UserInDB(
             name=user_data.name,
             email=email,
-            role="user",
+            role=user_data.role,
             passwordHash=hashed_pw,
         )
         user_dict = new_user.model_dump(by_alias=True, exclude={"id"})
@@ -42,10 +42,16 @@ class AuthService:
     async def login_user(login_data: UserLogin) -> dict[str, str]:
         db = get_database()
         user = await db.users.find_one({"email": str(login_data.email).lower()})
-        if not user or not verify_password(login_data.password, user["passwordHash"]):
+        if not user:
+            raise AppException(
+                code="USER_NOT_FOUND",
+                message="User not found",
+                status_code=404,
+            )
+        if not verify_password(login_data.password, user["passwordHash"]):
             raise AppException(
                 code="INVALID_CREDENTIALS",
-                message="Invalid email or password",
+                message="Invalid credentials",
                 status_code=401,
             )
 

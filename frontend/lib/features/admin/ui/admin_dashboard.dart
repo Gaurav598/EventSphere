@@ -6,6 +6,10 @@ import 'package:frontend/features/auth/providers/auth_provider.dart';
 import 'package:frontend/shared/widgets/loading_view.dart';
 import 'package:frontend/shared/widgets/error_view.dart';
 import 'package:frontend/shared/widgets/empty_state_view.dart';
+import 'package:frontend/shared/widgets/animated_dialog.dart';
+import 'package:frontend/core/theme_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter/services.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -28,10 +32,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     final adminProvider = context.watch<AdminProvider>();
     final authProvider = context.watch<AuthProvider>();
+    final themeProvider = context.watch<ThemeProvider>();
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Admin Dashboard'),
           bottom: const TabBar(
@@ -42,19 +48,33 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
           actions: [
             IconButton(
+              icon: Icon(themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode),
+              onPressed: () => themeProvider.toggleTheme(),
+            ),
+            IconButton(
               icon: const Icon(Icons.logout),
-              onPressed: () {
+              onPressed: () async {
+                await AnimatedDialog.show(context, title: 'Logged Out', message: 'You have logged out successfully.', icon: Icons.check_circle_outline, color: Colors.green);
                 authProvider.logout();
-                context.go('/login');
+                if (context.mounted) context.go('/login');
               },
             ),
           ],
         ),
-        body: TabBarView(
-          children: [
-            _buildEventsTab(adminProvider),
-            _buildAnalyticsTab(adminProvider),
-          ],
+        body: Container(
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage('assets/images/auth_bg.png'),
+              fit: BoxFit.cover,
+              colorFilter: ColorFilter.mode(Colors.black54, BlendMode.darken),
+            ),
+          ),
+          child: TabBarView(
+            children: [
+              _buildEventsTab(adminProvider),
+              _buildAnalyticsTab(adminProvider),
+            ],
+          ),
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () => context.push('/admin/create-event'),
@@ -112,6 +132,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       icon: const Icon(Icons.block, size: 18, color: Colors.orange),
                       label: const Text('Close', style: TextStyle(color: Colors.orange)),
                       onPressed: () => adminProvider.closeRegistration(event.id),
+                    ),
+                  if (event.isPrivate && event.inviteCode != null)
+                    TextButton.icon(
+                      icon: const Icon(Icons.share, size: 18, color: Colors.blue),
+                      label: const Text('Share', style: TextStyle(color: Colors.blue)),
+                      onPressed: () => _showShareDialog(context, event.inviteCode!),
                     ),
                   TextButton.icon(
                     icon: const Icon(Icons.delete, size: 18, color: Colors.red),
@@ -204,5 +230,50 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (confirm == true && context.mounted) {
       context.read<AdminProvider>().deleteEvent(eventId);
     }
+  }
+
+  void _showShareDialog(BuildContext context, String inviteCode) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Invite Attendees', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Share this QR code or the invite code below.'),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: 200,
+              height: 200,
+              child: QrImageView(
+                data: inviteCode,
+                version: QrVersions.auto,
+                backgroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SelectableText(
+              inviteCode,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('CLOSE'),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.copy),
+            label: const Text('COPY CODE'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: inviteCode));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite code copied to clipboard!')));
+              Navigator.of(ctx).pop();
+            },
+          ),
+        ],
+      ),
+    );
   }
 }

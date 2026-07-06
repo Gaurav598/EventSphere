@@ -31,6 +31,7 @@ class EventService:
         now = datetime.now(timezone.utc)
         query: dict[str, Any] = {
             "isDeleted": False,
+            "isPrivate": {"$ne": True},
             "eventDate": {"$gte": max(date_from or now, now)},
         }
         if date_to is not None:
@@ -122,6 +123,18 @@ class EventService:
         return EventResponse(**event).model_dump(mode="json", by_alias=True)
 
     @staticmethod
+    async def get_event_by_invite_code(invite_code: str) -> dict[str, Any]:
+        db = get_database()
+        event = await db.events.find_one({"inviteCode": invite_code, "isDeleted": False})
+        if not event:
+            raise AppException(
+                code="EVENT_NOT_FOUND",
+                message="Invalid invite code or event not found",
+                status_code=404,
+            )
+        return EventResponse(**event).model_dump(mode="json", by_alias=True)
+
+    @staticmethod
     async def search_events(
         q: str,
         page: int = 1,
@@ -134,6 +147,7 @@ class EventService:
         pattern = re.escape(q.strip())
         query: dict[str, Any] = {
             "isDeleted": False,
+            "isPrivate": {"$ne": True},
             "eventDate": {"$gte": max(date_from or now, now)},
             "$or": [
                 {"name": {"$regex": pattern, "$options": "i"}},

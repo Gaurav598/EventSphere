@@ -11,6 +11,7 @@ import 'package:frontend/features/auth/services/auth_service.dart';
 import 'package:frontend/features/events/services/event_service.dart';
 import 'package:frontend/features/tickets/services/ticket_service.dart';
 import 'package:frontend/features/admin/services/admin_service.dart';
+import 'package:frontend/core/theme_provider.dart';
 
 // Providers
 import 'package:frontend/features/auth/providers/auth_provider.dart';
@@ -56,6 +57,9 @@ void main() {
         ChangeNotifierProvider(
           create: (_) => AdminProvider(AdminService(apiClient.dio)),
         ),
+        ChangeNotifierProvider(
+          create: (_) => ThemeProvider(),
+        ),
       ],
       child: const EventSphereApp(),
     ),
@@ -83,13 +87,13 @@ class _EventSphereAppState extends State<EventSphereApp> {
       initialLocation: '/',
       refreshListenable: _authProvider,
       redirect: (context, state) {
-        final isLoading = _authProvider.isLoading;
+        final isInitializing = _authProvider.isInitializing;
         final isAuthenticated = _authProvider.isAuthenticated;
         final isAdmin = _authProvider.isAdmin;
         final isAuthRoute = state.matchedLocation == '/login' || state.matchedLocation == '/signup';
         final isSplashRoute = state.matchedLocation == '/';
 
-        if (isLoading) {
+        if (isInitializing) {
           return isSplashRoute ? null : '/';
         }
 
@@ -175,12 +179,17 @@ class _EventSphereAppState extends State<EventSphereApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'EventSphere',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      routerConfig: _router,
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, _) {
+        return MaterialApp.router(
+          title: 'EventSphere',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeProvider.themeMode,
+          routerConfig: _router,
+        );
+      },
     );
   }
 }

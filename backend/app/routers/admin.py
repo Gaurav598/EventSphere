@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
+from typing import Literal
 from app.services.admin_service import AdminService
 from app.dependencies.auth import require_admin
 from app.models.user import UserInDB
 from app.models.event import EventCreate, EventUpdate
+
+class StatusUpdate(BaseModel):
+    status: Literal["confirmed", "rejected"]
 
 router = APIRouter()
 
@@ -77,6 +82,19 @@ async def export_event_registrations(event_id: str, current_admin: UserInDB = De
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=registrations_{event_id}.csv"}
     )
+
+@router.put("/registrations/{registration_id}/status")
+async def update_registration_status(
+    registration_id: str, 
+    payload: StatusUpdate,
+    current_admin: UserInDB = Depends(require_admin)
+):
+    result = await AdminService.update_registration_status(registration_id, payload.status)
+    return {
+        "success": True,
+        "data": result,
+        "message": f"Registration status updated to {payload.status}"
+    }
 
 # -----------------
 # Analytics

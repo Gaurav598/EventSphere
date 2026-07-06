@@ -29,4 +29,9 @@ class EventService {
     final response = await dio.get('/events/$id');
     return Event.fromJson(response.data['data']);
   }
+
+  Future<Event> getEventByInviteCode(String inviteCode) async {
+    final response = await dio.get('/events/invite/$inviteCode');
+    return Event.fromJson(response.data['data']);
+  }
 }

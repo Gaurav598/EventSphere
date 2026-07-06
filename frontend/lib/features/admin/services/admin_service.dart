@@ -35,6 +35,10 @@ class AdminService {
     return List<Map<String, dynamic>>.from(response.data['data']);
   }
 
+  Future<void> updateRegistrationStatus(String regId, String status) async {
+    await dio.put('/admin/registrations/$regId/status', data: {'status': status});
+  }
+
   Future<String> exportRegistrations(String eventId) async {
     final response = await dio.get(
       '/admin/events/$eventId/registrations/export',

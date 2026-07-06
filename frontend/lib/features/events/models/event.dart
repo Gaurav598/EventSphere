@@ -9,6 +9,8 @@ class Event {
   final int capacity;
   final int registeredCount;
   final bool isRegistrationOpen;
+  final bool isPrivate;
+  final String? inviteCode;
 
   Event({
     required this.id,
@@ -21,6 +23,8 @@ class Event {
     required this.capacity,
     required this.registeredCount,
     required this.isRegistrationOpen,
+    this.isPrivate = false,
+    this.inviteCode,
   });
 
   factory Event.fromJson(Map<String, dynamic> json) {
@@ -35,6 +39,8 @@ class Event {
       capacity: json['capacity'] ?? 0,
       registeredCount: json['registeredCount'] ?? 0,
       isRegistrationOpen: json['isRegistrationOpen'] ?? false,
+      isPrivate: json['isPrivate'] ?? false,
+      inviteCode: json['inviteCode'],
     );
   }
 }

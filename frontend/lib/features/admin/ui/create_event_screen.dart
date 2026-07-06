@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/features/admin/providers/admin_provider.dart';
 import 'package:frontend/core/validators.dart';
+import 'package:flutter/services.dart';
 
 class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen({super.key});
@@ -21,6 +22,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   
   DateTime? _eventDate;
   DateTime? _registrationDeadline;
+  bool _isPrivate = false;
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _eventDate == null || _registrationDeadline == null) {
@@ -36,6 +38,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       "eventDate": _eventDate!.toUtc().toIso8601String(),
       "registrationDeadline": _registrationDeadline!.toUtc().toIso8601String(),
       "capacity": int.tryParse(_capacityController.text.trim()) ?? 0,
+      "isPrivate": _isPrivate,
     };
 
     final success = await context.read<AdminProvider>().createEvent(data);
@@ -109,6 +112,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 controller: _capacityController,
                 decoration: const InputDecoration(labelText: 'Capacity'),
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: Validators.positiveInteger,
               ),
               const SizedBox(height: 16),
@@ -128,6 +132,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Private Event (Invite Only)'),
+                subtitle: const Text('Private events do not appear on the public discover page.'),
+                value: _isPrivate,
+                onChanged: (val) => setState(() => _isPrivate = val),
               ),
               const SizedBox(height: 32),
               ElevatedButton(
