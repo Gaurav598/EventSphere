@@ -30,6 +30,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return;
     }
 
+    if (_registrationDeadline!.isAfter(_eventDate!)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration deadline cannot be after the event date.')));
+      return;
+    }
+
     final data = {
       "name": _nameController.text.trim(),
       "description": _descController.text.trim(),
@@ -48,7 +53,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (success) {
       context.pop();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to create event.')));
+      final err = context.read<AdminProvider>().error ?? 'Failed to create event.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
     }
   }
 

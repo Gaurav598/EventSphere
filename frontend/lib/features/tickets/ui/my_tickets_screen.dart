@@ -36,8 +36,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                   onRetry: () => ticketProvider.fetchMyTickets(),
                 )
               : ticketProvider.myTickets.isEmpty
-                  ? const EmptyStateView(
-                      message: 'You have no tickets yet.',
+                  ? const EmptyStateView(message: 'You have no tickets yet.',
                       icon: Icons.confirmation_num_outlined,
                     )
                   : ListView.builder(

@@ -40,7 +40,10 @@ dependencies:
   qr_flutter: ^4.1.0
   flutter_secure_storage: ^10.3.1
   url_launcher: ^6.3.2
-
+  google_fonts: ^8.1.0
+  intl: ^0.20.3
+  animations: ^2.2.0
+  shimmer: ^3.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

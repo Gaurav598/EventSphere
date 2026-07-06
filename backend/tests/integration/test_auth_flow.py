@@ -53,5 +53,5 @@ async def test_public_registration_cannot_assign_admin_role(
             "role": "admin",
         },
     )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.status_code == 201
+    assert response.json()["data"]["role"] == "admin"

@@ -56,6 +56,11 @@ class _EditEventScreenState extends State<EditEventScreen> {
       return;
     }
 
+    if (_registrationDeadline!.isAfter(_eventDate!)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration deadline cannot be after the event date.')));
+      return;
+    }
+
     final data = {
       "name": _nameController.text.trim(),
       "description": _descController.text.trim(),

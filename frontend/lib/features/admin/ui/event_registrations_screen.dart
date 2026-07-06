@@ -68,6 +68,7 @@ class _EventRegistrationsScreenState extends State<EventRegistrationsScreen> {
     final success = await provider.updateRegistrationStatus(regId, status);
     if (success && mounted) {
       await _loadRegistrations();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Registration $status!')),
       );
@@ -121,8 +122,7 @@ class _EventRegistrationsScreenState extends State<EventRegistrationsScreen> {
 
   Widget _buildList(List<Map<String, dynamic>> list, bool isPending) {
     if (list.isEmpty) {
-      return EmptyStateView(
-        message: 'No ${isPending ? 'pending' : 'confirmed'} registrations.',
+      return EmptyStateView(message: 'No ${isPending ? 'pending' : 'confirmed'} registrations.',
         icon: Icons.group_off,
       );
     }

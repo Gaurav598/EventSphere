@@ -50,8 +50,15 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       if (e is DioException && e.error is ApiException) {
         _error = (e.error as ApiException).message;
+      } else if (e is DioException && e.response?.data != null) {
+        final data = e.response?.data;
+        if (data is Map && data['error'] is Map) {
+          _error = data['error']['message'];
+        } else {
+          _error = e.message;
+        }
       } else {
-        _error = 'Login failed. Please check credentials.';
+        _error = e.toString();
       }
       _setLoading(false);
       return false;
@@ -67,8 +74,15 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       if (e is DioException && e.error is ApiException) {
         _error = (e.error as ApiException).message;
+      } else if (e is DioException && e.response?.data != null) {
+        final data = e.response?.data;
+        if (data is Map && data['error'] is Map) {
+          _error = data['error']['message'];
+        } else {
+          _error = e.message;
+        }
       } else {
-        _error = 'Registration failed. User might exist.';
+        _error = e.toString();
       }
       _setLoading(false);
       return false;

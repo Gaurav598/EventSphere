@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:frontend/features/events/services/event_service.dart';
+import 'package:frontend/features/events/providers/event_provider.dart';
 import 'package:frontend/features/events/models/event.dart';
 import 'package:frontend/features/tickets/providers/ticket_provider.dart';
 import 'package:frontend/shared/widgets/loading_view.dart';
@@ -17,6 +17,7 @@ class EventDetailsScreen extends StatefulWidget {
 class _EventDetailsScreenState extends State<EventDetailsScreen> {
   Event? _event;
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -26,14 +27,19 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
 
   Future<void> _loadEvent() async {
     try {
-      final service = context.read<EventService>();
-      final event = await service.getEventDetails(widget.eventId);
+      final provider = context.read<EventProvider>();
+      final event = await provider.getEventDetails(widget.eventId);
       setState(() {
         _event = event;
         _isLoading = false;
+        _error = null;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      debugPrint('Error loading event: $e');
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
     }
   }
 
@@ -63,10 +69,17 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
       );
     }
 
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Event Details')),
+        body: EmptyStateView(message: _error!, icon: Icons.error_outline),
+      );
+    }
+
     if (_event == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Event Details')),
-        body: const EmptyStateView(message: 'Event not found', icon: Icons.error_outline),
+        body: EmptyStateView(message: 'Event not found', icon: Icons.error_outline),
       );
     }
 

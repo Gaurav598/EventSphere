@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:frontend/core/models/paginated_response.dart';
 import 'package:frontend/features/events/models/event.dart';
 import 'package:frontend/features/admin/services/admin_service.dart';
@@ -31,6 +32,8 @@ class AdminProvider extends ChangeNotifier {
   List<dynamic> get monthlyTrend => _monthlyTrend;
   bool get isAnalyticsLoading => _isAnalyticsLoading;
 
+  int get activeEventCount => _pagination?.total ?? 0;
+
   Future<void> fetchMyEvents({int page = 1, int limit = 20}) async {
     _setLoading(true);
     try {
@@ -49,16 +52,28 @@ class AdminProvider extends ChangeNotifier {
   }
 
   Future<bool> createEvent(Map<String, dynamic> eventData) async {
+    if (activeEventCount >= 3) {
+      _error = 'You have reached the maximum limit of 3 active events. Delete or archive an existing event before creating another.';
+      notifyListeners();
+      return false;
+    }
+    
     _setLoading(true);
     try {
       await _adminService.createEvent(eventData);
       await fetchMyEvents();
+      _setLoading(false);
       return true;
     } catch (e) {
-      if (e is ApiException) {
-        _error = e.message;
+      if (e is DioException && e.response?.data != null) {
+        final data = e.response?.data;
+        if (data is Map && data['error'] is Map) {
+          _error = data['error']['message'];
+        } else {
+          _error = e.message;
+        }
       } else {
-        _error = 'Failed to create event';
+        _error = e.toString();
       }
       _setLoading(false);
       return false;

@@ -57,10 +57,22 @@ class _SignupScreenState extends State<SignupScreen> {
           child: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
-              child: Card(
-                elevation: 8,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                color: Theme.of(context).cardColor.withOpacity(0.85),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.1),
+                    width: 1.5,
+                  ),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(32.0),
                   child: Form(
@@ -72,52 +84,89 @@ class _SignupScreenState extends State<SignupScreen> {
                         Text(
                           'Join EventSphere',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                         ),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Create your account to continue',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                        ),
+                        const SizedBox(height: 40),
                         TextFormField(
                           controller: _nameController,
-                          decoration: const InputDecoration(labelText: 'Name', prefixIcon: Icon(Icons.person)),
+                          decoration: InputDecoration(
+                            labelText: 'Full Name', 
+                            prefixIcon: Icon(Icons.person_outline, color: Theme.of(context).colorScheme.primary),
+                          ),
                           validator: Validators.requiredField,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
                         TextFormField(
                           controller: _emailController,
-                          decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email)),
+                          decoration: InputDecoration(
+                            labelText: 'Email Address', 
+                            prefixIcon: Icon(Icons.email_outlined, color: Theme.of(context).colorScheme.primary),
+                          ),
                           keyboardType: TextInputType.emailAddress,
                           validator: Validators.email,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
                         TextFormField(
                           controller: _passwordController,
-                          decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock)),
+                          decoration: InputDecoration(
+                            labelText: 'Password', 
+                            prefixIcon: Icon(Icons.lock_outline, color: Theme.of(context).colorScheme.primary),
+                          ),
                           obscureText: true,
                           validator: Validators.password,
                         ),
-                        const SizedBox(height: 16),
-                        SwitchListTile(
-                          title: const Text('Register as Admin'),
-                          value: _isAdmin,
-                          onChanged: (val) => setState(() => _isAdmin = val),
-                        ),
-                        const SizedBox(height: 32),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        const SizedBox(height: 20),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(12),
                           ),
+                          child: SwitchListTile(
+                            title: const Text('Register as Admin', style: TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: const Text('Create and manage events', style: TextStyle(fontSize: 12)),
+                            value: _isAdmin,
+                            onChanged: (val) => setState(() => _isAdmin = val),
+                            activeColor: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+                        ElevatedButton(
                           onPressed: authProvider.isLoading ? null : _signup,
                           child: authProvider.isLoading
-                              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Text('SIGN UP', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Text('CREATE ACCOUNT'),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 24),
                         TextButton(
                           onPressed: () => context.go('/login'),
-                          child: const Text('Already have an account? Login'),
+                          child: RichText(
+                            text: TextSpan(
+                              text: 'Already have an account? ',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: 'Sign In',
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         )
                       ],
                     ),

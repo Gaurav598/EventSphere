@@ -61,6 +61,10 @@ class EventProvider extends ChangeNotifier {
     }
   }
 
+  Future<Event> getEventDetails(String id) async {
+    return await _eventService.getEventDetails(id);
+  }
+
   void _setLoading(bool value) {
     _isLoading = value;
     _error = null;

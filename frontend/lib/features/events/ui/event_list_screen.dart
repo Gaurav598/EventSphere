@@ -6,7 +6,8 @@ import 'package:frontend/features/auth/providers/auth_provider.dart';
 import 'package:frontend/shared/widgets/loading_view.dart';
 import 'package:frontend/shared/widgets/error_view.dart';
 import 'package:frontend/shared/widgets/empty_state_view.dart';
-import 'package:frontend/shared/widgets/animated_dialog.dart';
+import 'package:frontend/shared/widgets/animated_confirm_dialog.dart';
+import 'package:frontend/shared/widgets/event_card.dart';
 import 'package:frontend/core/theme_provider.dart';
 
 class EventListScreen extends StatefulWidget {
@@ -18,6 +19,8 @@ class EventListScreen extends StatefulWidget {
 
 class _EventListScreenState extends State<EventListScreen> {
   final _searchController = TextEditingController();
+  String _selectedCategory = 'All';
+  final List<String> _categories = ['All', 'Conference', 'Workshop', 'Meetup', 'Social', 'Other'];
 
   @override
   void initState() {
@@ -27,16 +30,25 @@ class _EventListScreenState extends State<EventListScreen> {
     });
   }
 
+  Future<void> _refreshEvents() async {
+    await context.read<EventProvider>().fetchEvents(
+      category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final eventProvider = context.watch<EventProvider>();
     final authProvider = context.watch<AuthProvider>();
     final themeProvider = context.watch<ThemeProvider>();
+    final theme = Theme.of(context);
+    
+    final user = authProvider.user;
+    final userName = user?.name.split(' ').first ?? 'Guest';
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Discover Events'),
+        title: const Text('EventSphere'),
         actions: [
           IconButton(
             icon: const Icon(Icons.vpn_key),
@@ -54,70 +66,127 @@ class _EventListScreenState extends State<EventListScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await AnimatedDialog.show(context, title: 'Logged Out', message: 'You have logged out successfully.', icon: Icons.check_circle_outline, color: Colors.green);
-              authProvider.logout();
-              if (context.mounted) context.go('/login');
+              final confirm = await AnimatedConfirmDialog.show(
+                context,
+                title: 'Logout',
+                message: 'Are you sure you want to logout?',
+                icon: Icons.logout,
+                color: theme.colorScheme.error,
+              );
+              if (confirm && context.mounted) {
+                authProvider.logout();
+                context.go('/login');
+              }
             },
           ),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/auth_bg.png'),
-            fit: BoxFit.cover,
-            colorFilter: ColorFilter.mode(Colors.black54, BlendMode.darken),
-          ),
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search events...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      eventProvider.fetchEvents();
-                    },
-                  ),
+      body: RefreshIndicator(
+        onRefresh: _refreshEvents,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Hello, $userName! 👋', style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text('Find events that match your interests', style: theme.textTheme.bodyLarge),
+                    const SizedBox(height: 24),
+                    
+                    // Search Bar
+                    TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search events...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchController.text.isNotEmpty ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            eventProvider.fetchEvents();
+                            setState(() {});
+                          },
+                        ) : null,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                      onSubmitted: (query) => eventProvider.searchEvents(query),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Category Filters
+                    SizedBox(
+                      height: 40,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _categories.length,
+                        itemBuilder: (context, index) {
+                          final category = _categories[index];
+                          final isSelected = _selectedCategory == category;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: FilterChip(
+                              label: Text(category),
+                              selected: isSelected,
+                              onSelected: (selected) {
+                                setState(() => _selectedCategory = category);
+                                _refreshEvents();
+                              },
+                              selectedColor: theme.colorScheme.primary.withOpacity(0.2),
+                              checkmarkColor: theme.colorScheme.primary,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    Text('Upcoming Events', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                  ],
                 ),
-                onSubmitted: (query) => eventProvider.searchEvents(query),
               ),
             ),
-            Expanded(
-              child: eventProvider.isLoading
-                  ? const LoadingView()
-                  : eventProvider.error != null
-                      ? ErrorView(
-                          message: eventProvider.error!,
-                          onRetry: () => eventProvider.fetchEvents(),
-                        )
-                      : eventProvider.events.isEmpty
-                          ? const EmptyStateView(
-                              message: 'No events found',
-                              icon: Icons.event_busy,
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: eventProvider.events.length,
-                              itemBuilder: (context, index) {
-                                final event = eventProvider.events[index];
-                                return Card(
-                                  child: ListTile(
-                                    title: Text(event.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    subtitle: Text('${event.category} • ${event.location}'),
-                                    trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => context.push('/events/${event.id}'),
-                                  ),
-                                );
-                              },
-                            ),
-            ),
+            
+            // Events List
+            if (eventProvider.isLoading)
+              const SliverFillRemaining(child: LoadingView())
+            else if (eventProvider.error != null)
+              SliverFillRemaining(
+                child: ErrorView(
+                  message: eventProvider.error!,
+                  onRetry: _refreshEvents,
+                ),
+              )
+            else if (eventProvider.events.isEmpty)
+              const SliverFillRemaining(
+                child: EmptyStateView(message: 'No events found for this category or search.',
+                  icon: Icons.event_busy,
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final event = eventProvider.events[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: EventCard(
+                          event: event,
+                          onTap: () => context.push('/events/${event.id}'),
+                        ),
+                      );
+                    },
+                    childCount: eventProvider.events.length,
+                  ),
+                ),
+              ),
+              
+            const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
           ],
         ),
       ),

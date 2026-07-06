@@ -60,9 +60,19 @@ class AdminService:
             now,
         )
         db = get_database()
+        
+        admin_obj_id = parse_object_id(admin_id, "admin")
+        active_events_count = await db.events.count_documents({"createdBy": admin_obj_id, "isDeleted": False})
+        if active_events_count >= 3:
+            raise AppException(
+                code="EVENT_LIMIT_REACHED",
+                message="You have reached the maximum limit of 3 active events. Delete or archive an existing event before creating another.",
+                status_code=403,
+            )
+            
         event = EventInDB(
             **event_data.model_dump(),
-            createdBy=parse_object_id(admin_id, "admin"),
+            createdBy=admin_obj_id,
         )
         if event.isPrivate:
             code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -276,7 +286,7 @@ class AdminService:
             {"$sort": {"registeredAt": -1}},
         ]
         registrations = []
-        cursor = await db.registrations.aggregate(pipeline)
+        cursor = db.registrations.aggregate(pipeline)
         async for document in cursor:
             registrations.append(
                 {
@@ -345,7 +355,7 @@ class AdminService:
             {"$unwind": "$event"},
         ]
         results = []
-        cursor = await db.registrations.aggregate(pipeline)
+        cursor = db.registrations.aggregate(pipeline)
         async for document in cursor:
             results.append(
                 {
@@ -381,7 +391,7 @@ class AdminService:
             },
             {"$sort": {"count": -1}},
         ]
-        cursor = await db.registrations.aggregate(pipeline)
+        cursor = db.registrations.aggregate(pipeline)
         return [
             {"category": document["_id"], "count": document["count"]}
             async for document in cursor

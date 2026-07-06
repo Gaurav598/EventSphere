@@ -6,10 +6,11 @@ import 'package:frontend/features/auth/providers/auth_provider.dart';
 import 'package:frontend/shared/widgets/loading_view.dart';
 import 'package:frontend/shared/widgets/error_view.dart';
 import 'package:frontend/shared/widgets/empty_state_view.dart';
-import 'package:frontend/shared/widgets/animated_dialog.dart';
+
 import 'package:frontend/core/theme_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/services.dart';
+import 'package:frontend/shared/widgets/animated_confirm_dialog.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -54,9 +55,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: () async {
-                await AnimatedDialog.show(context, title: 'Logged Out', message: 'You have logged out successfully.', icon: Icons.check_circle_outline, color: Colors.green);
-                authProvider.logout();
-                if (context.mounted) context.go('/login');
+                final confirm = await AnimatedConfirmDialog.show(
+                  context,
+                  title: 'Logout',
+                  message: 'Are you sure you want to logout?',
+                  icon: Icons.logout,
+                  color: Theme.of(context).colorScheme.error,
+                );
+                if (confirm && context.mounted) {
+                  authProvider.logout();
+                  context.go('/login');
+                }
               },
             ),
           ],
@@ -93,63 +102,139 @@ class _AdminDashboardState extends State<AdminDashboard> {
       );
     }
     if (adminProvider.myEvents.isEmpty) {
-      return const EmptyStateView(
-        message: 'You have not created any events.',
+      return const EmptyStateView(message: 'You have not created any events.',
         icon: Icons.event_note,
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: adminProvider.myEvents.length,
-      itemBuilder: (context, index) {
-        final event = adminProvider.myEvents[index];
-        return Card(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: Text(event.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Capacity: ${event.registeredCount} / ${event.capacity}'),
-                trailing: Text(event.isRegistrationOpen ? 'OPEN' : 'CLOSED', 
-                    style: TextStyle(color: event.isRegistrationOpen ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
-              ),
-              const Divider(height: 1),
-              OverflowBar(
-                alignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  TextButton.icon(
-                    icon: const Icon(Icons.edit, size: 18),
-                    label: const Text('Edit'),
-                    onPressed: () => context.push('/admin/events/${event.id}/edit', extra: event),
-                  ),
-                  TextButton.icon(
-                    icon: const Icon(Icons.people, size: 18),
-                    label: const Text('Attendees'),
-                    onPressed: () => context.push('/admin/events/${event.id}/registrations', extra: event),
-                  ),
-                  if (event.isRegistrationOpen)
-                    TextButton.icon(
-                      icon: const Icon(Icons.block, size: 18, color: Colors.orange),
-                      label: const Text('Close', style: TextStyle(color: Colors.orange)),
-                      onPressed: () => adminProvider.closeRegistration(event.id),
+    return RefreshIndicator(
+      onRefresh: () => adminProvider.fetchMyEvents(),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: adminProvider.myEvents.length,
+        itemBuilder: (context, index) {
+          final event = adminProvider.myEvents[index];
+          final theme = Theme.of(context);
+          return Card(
+            clipBehavior: Clip.antiAlias,
+            margin: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Banner
+                Container(
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.1),
+                    image: const DecorationImage(
+                      image: AssetImage('assets/images/auth_bg.png'),
+                      fit: BoxFit.cover,
+                      colorFilter: ColorFilter.mode(Colors.black54, BlendMode.darken),
                     ),
-                  if (event.isPrivate && event.inviteCode != null)
-                    TextButton.icon(
-                      icon: const Icon(Icons.share, size: 18, color: Colors.blue),
-                      label: const Text('Share', style: TextStyle(color: Colors.blue)),
-                      onPressed: () => _showShareDialog(context, event.inviteCode!),
-                    ),
-                  TextButton.icon(
-                    icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                    label: const Text('Delete', style: TextStyle(color: Colors.red)),
-                    onPressed: () => _confirmDelete(context, event.id),
                   ),
-                ],
-              )
-            ],
-          ),
-        );
-      },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                event.name,
+                                style: theme.textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: event.isRegistrationOpen ? Colors.green : Colors.red,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                event.isRegistrationOpen ? 'OPEN' : 'CLOSED',
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Capacity', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                          const SizedBox(height: 4),
+                          Text('${event.registeredCount} / ${event.capacity}', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      if (event.isPrivate)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceVariant,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.lock, size: 16),
+                              SizedBox(width: 4),
+                              Text('Private', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: theme.dividerColor),
+                OverflowBar(
+                  alignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('Edit'),
+                      onPressed: () => context.push('/admin/events/${event.id}/edit', extra: event),
+                    ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.people, size: 18),
+                      label: const Text('Attendees'),
+                      onPressed: () => context.push('/admin/events/${event.id}/registrations', extra: event),
+                    ),
+                    if (event.isRegistrationOpen)
+                      TextButton.icon(
+                        icon: const Icon(Icons.block, size: 18, color: Colors.orange),
+                        label: const Text('Close', style: TextStyle(color: Colors.orange)),
+                        onPressed: () => adminProvider.closeRegistration(event.id),
+                      ),
+                    if (event.isPrivate && event.inviteCode != null)
+                      TextButton.icon(
+                        icon: const Icon(Icons.share, size: 18, color: Colors.blue),
+                        label: const Text('Share', style: TextStyle(color: Colors.blue)),
+                        onPressed: () => _showShareDialog(context, event.inviteCode!),
+                      ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                      label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                      onPressed: () => _deleteEvent(context, event.id),
+                    ),
+                  ],
+                )
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -162,72 +247,94 @@ class _AdminDashboardState extends State<AdminDashboard> {
       );
     }
     if (adminProvider.analyticsSummary == null) {
-      return const EmptyStateView(message: 'No analytics available', icon: Icons.analytics_outlined);
+      return const EmptyStateView(message: 'No analytics available', icon: Icons.bar_chart);
     }
 
     final summary = adminProvider.analyticsSummary!;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            Expanded(child: _buildStatCard('Total Registrations', summary['totalRegistrations'].toString())),
-            const SizedBox(width: 16),
-            Expanded(child: _buildStatCard('Upcoming Events', summary['upcomingEventsCount'].toString())),
-          ],
-        ),
-        const SizedBox(height: 24),
-        const Text('Top Events', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        ...adminProvider.topEvents.map((e) {
-          final evt = e['event'] as Map<String, dynamic>;
-          return ListTile(
-            title: Text(evt['name'] ?? ''),
-            trailing: Text('${e['totalRegistrations']} reg'),
-          );
-        }),
-        const SizedBox(height: 24),
-        const Text('Registrations by Category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        ...adminProvider.categoryWise.map((c) => ListTile(
-          title: Text(c['category'] ?? 'Unknown'),
-          trailing: Text(c['count'].toString()),
-        )),
-      ],
-    );
-  }
-
-  Widget _buildStatCard(String title, String value) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmDelete(BuildContext context, String eventId) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Event'),
-        content: const Text('Are you sure you want to delete this event? This action cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('CANCEL')),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('DELETE', style: TextStyle(color: Colors.red)),
+    final theme = Theme.of(context);
+    
+    return RefreshIndicator(
+      onRefresh: () => adminProvider.fetchAnalytics(),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            children: [
+              Expanded(child: _buildStatCard('Registrations', summary['totalRegistrations'].toString(), Icons.people, theme.colorScheme.primary)),
+              const SizedBox(width: 16),
+              Expanded(child: _buildStatCard('Upcoming', summary['upcomingEventsCount'].toString(), Icons.event, theme.colorScheme.secondary)),
+            ],
           ),
+          const SizedBox(height: 32),
+          Text('Top Performing Events', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          ...adminProvider.topEvents.map((e) {
+            final evt = e['event'] as Map<String, dynamic>;
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+                  child: Icon(Icons.star, color: theme.colorScheme.primary),
+                ),
+                title: Text(evt['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                trailing: Chip(
+                  label: Text('${e['totalRegistrations']} reg'),
+                  backgroundColor: theme.colorScheme.surfaceVariant,
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 32),
+          Text('Registrations by Category', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          ...adminProvider.categoryWise.map((c) => Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Icon(Icons.category, color: theme.colorScheme.secondary),
+              title: Text(c['category'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
+              trailing: Text(c['count'].toString(), style: theme.textTheme.titleMedium),
+            ),
+          )),
+          const SizedBox(height: 32),
         ],
       ),
     );
-    if (confirm == true && context.mounted) {
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Card(
+      elevation: 0,
+      color: color.withOpacity(0.1),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: color.withOpacity(0.3), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            Icon(icon, size: 32, color: color),
+            const SizedBox(height: 12),
+            Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 4),
+            Text(title, textAlign: TextAlign.center, style: TextStyle(color: color.withOpacity(0.8), fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteEvent(BuildContext context, String eventId) async {
+    final confirm = await AnimatedConfirmDialog.show(
+      context,
+      title: 'Delete Event',
+      message: 'Are you sure you want to delete this event? This action cannot be undone.',
+      icon: Icons.delete_outline,
+      color: Colors.red,
+      confirmText: 'DELETE',
+    );
+    if (confirm && context.mounted) {
       context.read<AdminProvider>().deleteEvent(eventId);
     }
   }
