@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/features/tickets/providers/ticket_provider.dart';
+import 'package:frontend/shared/widgets/loading_view.dart';
+import 'package:frontend/shared/widgets/error_view.dart';
+import 'package:frontend/shared/widgets/empty_state_view.dart';
 
 class MyTicketsScreen extends StatefulWidget {
   const MyTicketsScreen({super.key});
@@ -26,18 +29,23 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('My Tickets')),
       body: ticketProvider.isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView()
           : ticketProvider.error != null
-              ? Center(child: Text(ticketProvider.error!))
+              ? ErrorView(
+                  message: ticketProvider.error!,
+                  onRetry: () => ticketProvider.fetchMyTickets(),
+                )
               : ticketProvider.myTickets.isEmpty
-                  ? const Center(child: Text('You have no tickets yet.'))
+                  ? const EmptyStateView(
+                      message: 'You have no tickets yet.',
+                      icon: Icons.confirmation_num_outlined,
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: ticketProvider.myTickets.length,
                       itemBuilder: (context, index) {
                         final ticket = ticketProvider.myTickets[index];
                         return Card(
-                          margin: const EdgeInsets.only(bottom: 16),
                           child: ListTile(
                             title: Text(ticket.event?.name ?? 'Unknown Event'),
                             subtitle: Text('Status: ${ticket.status}'),

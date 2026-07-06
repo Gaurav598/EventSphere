@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/features/events/providers/event_provider.dart';
 import 'package:frontend/features/auth/providers/auth_provider.dart';
+import 'package:frontend/shared/widgets/loading_view.dart';
+import 'package:frontend/shared/widgets/error_view.dart';
+import 'package:frontend/shared/widgets/empty_state_view.dart';
 
 class EventListScreen extends StatefulWidget {
   const EventListScreen({super.key});
@@ -66,18 +69,23 @@ class _EventListScreenState extends State<EventListScreen> {
           ),
           Expanded(
             child: eventProvider.isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const LoadingView()
                 : eventProvider.error != null
-                    ? Center(child: Text(eventProvider.error!))
+                    ? ErrorView(
+                        message: eventProvider.error!,
+                        onRetry: () => eventProvider.fetchEvents(),
+                      )
                     : eventProvider.events.isEmpty
-                        ? const Center(child: Text('No events found'))
+                        ? const EmptyStateView(
+                            message: 'No events found',
+                            icon: Icons.event_busy,
+                          )
                         : ListView.builder(
                             padding: const EdgeInsets.all(16),
                             itemCount: eventProvider.events.length,
                             itemBuilder: (context, index) {
                               final event = eventProvider.events[index];
                               return Card(
-                                margin: const EdgeInsets.only(bottom: 16),
                                 child: ListTile(
                                   title: Text(event.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                                   subtitle: Text('${event.category} • ${event.location}'),

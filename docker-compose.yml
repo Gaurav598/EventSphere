@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   fastapi:
     build:
@@ -7,16 +5,20 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    environment:
-      - MONGO_URI=mongodb://mongodb:27017
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=development_secret_key_change_in_production_12345
-      - JWT_EXPIRE_MINUTES=1440
+    env_file:
+      - .env
     depends_on:
-      - mongodb
-      - redis
-    volumes:
-      - ./backend:/app
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   mongodb:
     image: mongo:7
@@ -24,11 +26,25 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
 volumes:
   mongo_data:

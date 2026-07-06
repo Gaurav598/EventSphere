@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import PlainTextResponse
 from app.services.admin_service import AdminService
 from app.dependencies.auth import require_admin
@@ -10,6 +10,20 @@ router = APIRouter()
 # -----------------
 # Event Management
 # -----------------
+@router.get("/events")
+async def get_my_events(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_admin: UserInDB = Depends(require_admin)
+):
+    result = await AdminService.get_events(str(current_admin.id), page, limit)
+    return {
+        "success": True,
+        "data": result["items"],
+        "pagination": result["pagination"],
+        "message": "Admin events retrieved successfully"
+    }
+
 @router.post("/events", status_code=201)
 async def create_event(event_data: EventCreate, current_admin: UserInDB = Depends(require_admin)):
     result = await AdminService.create_event(event_data, str(current_admin.id))

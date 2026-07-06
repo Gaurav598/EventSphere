@@ -48,6 +48,7 @@
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
+| GET | `/admin/events` | admin | List events managed by the admin (paginated) |
 | POST | `/admin/events` | admin | Create a new event |
 | PUT | `/admin/events/{event_id}` | admin | Update an event |
 | DELETE | `/admin/events/{event_id}` | admin | Soft-delete an event |

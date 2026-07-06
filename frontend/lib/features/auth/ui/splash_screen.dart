@@ -1,37 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:go_router/go_router.dart';
-import 'package:frontend/features/auth/providers/auth_provider.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _checkAuth();
-  }
-
-  Future<void> _checkAuth() async {
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-    
-    final authProvider = context.read<AuthProvider>();
-    if (authProvider.isAuthenticated) {
-      if (authProvider.isAdmin) {
-        context.go('/admin');
-      } else {
-        context.go('/events');
-      }
-    } else {
-      context.go('/login');
-    }
-  }
 
   @override
   Widget build(BuildContext context) {

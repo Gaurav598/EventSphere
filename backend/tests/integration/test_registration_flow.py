@@ -1,62 +1,97 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 
+from app.core.security import verify_ticket_payload
+
+
 @pytest.mark.asyncio
-async def test_registration_flow(async_client: AsyncClient):
-    # 1. Register and login admin
-    await async_client.post("/api/v1/auth/register", json={
-        "name": "Admin", "email": "admin@example.com", "password": "pass", "role": "admin"
-    })
-    admin_login = await async_client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "pass"})
+async def test_registration_flow(
+    async_client: AsyncClient,
+    create_user,
+):
+    password = "strong-password"
+    await create_user(
+        name="Admin",
+        email="admin@example.com",
+        password=password,
+        role="admin",
+    )
+    admin_login = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": password},
+    )
     admin_token = admin_login.json()["data"]["accessToken"]
-    
-    # 2. Register and login user
-    await async_client.post("/api/v1/auth/register", json={
-        "name": "User", "email": "user@example.com", "password": "pass", "role": "user"
-    })
-    user_login = await async_client.post("/api/v1/auth/login", json={"email": "user@example.com", "password": "pass"})
+
+    await async_client.post(
+        "/api/v1/auth/register",
+        json={
+            "name": "User",
+            "email": "user@example.com",
+            "password": password,
+        },
+    )
+    user_login = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": "user@example.com", "password": password},
+    )
     user_token = user_login.json()["data"]["accessToken"]
-    
-    # 3. Create Event (as Admin)
+
+    now = datetime.now(timezone.utc)
     event_data = {
         "name": "Test Event",
-        "description": "Desc",
+        "description": "Description",
         "category": "workshop",
         "location": "Online",
-        "eventDate": "2026-10-01T10:00:00Z",
-        "registrationDeadline": "2026-09-30T23:59:59Z",
-        "capacity": 5
+        "eventDate": (now + timedelta(days=30)).isoformat(),
+        "registrationDeadline": (now + timedelta(days=29)).isoformat(),
+        "capacity": 5,
     }
-    create_resp = await async_client.post(
-        "/api/v1/admin/events", 
-        json=event_data, 
-        headers={"Authorization": f"Bearer {admin_token}"}
+    created = await async_client.post(
+        "/api/v1/admin/events",
+        json=event_data,
+        headers={"Authorization": f"Bearer {admin_token}"},
     )
-    assert create_resp.status_code == 201
-    event_id = create_resp.json()["data"]["_id"]
-    
-    # 4. Register for event (as User)
-    reg_resp = await async_client.post(
+    assert created.status_code == 201
+    event_id = created.json()["data"]["_id"]
+
+    registration = await async_client.post(
         f"/api/v1/events/{event_id}/register",
-        headers={"Authorization": f"Bearer {user_token}"}
+        headers={"Authorization": f"Bearer {user_token}"},
     )
-    assert reg_resp.status_code == 200
-    assert reg_resp.json()["data"]["status"] == "confirmed"
-    
-    # 5. Check my registrations
-    my_reg_resp = await async_client.get(
+    assert registration.status_code == 201
+    registration_id = registration.json()["data"]["registrationId"]
+
+    duplicate = await async_client.post(
+        f"/api/v1/events/{event_id}/register",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert duplicate.status_code == 409
+
+    mine = await async_client.get(
         "/api/v1/registrations/me",
-        headers={"Authorization": f"Bearer {user_token}"}
+        headers={"Authorization": f"Bearer {user_token}"},
     )
-    assert my_reg_resp.status_code == 200
-    # mongomock has limitations with $lookup, so we don't strictly assert the count here
-    assert isinstance(my_reg_resp.json()["data"], list)
-    
-    # 6. Check admin event registrations
-    admin_reg_resp = await async_client.get(
+    assert mine.status_code == 200
+    assert len(mine.json()["data"]) == 1
+    assert mine.json()["data"][0]["event"]["name"] == "Test Event"
+
+    admin_registrations = await async_client.get(
         f"/api/v1/admin/events/{event_id}/registrations",
-        headers={"Authorization": f"Bearer {admin_token}"}
+        headers={"Authorization": f"Bearer {admin_token}"},
     )
-    assert admin_reg_resp.status_code == 200
-    # mongomock has limitations with $lookup, so we don't strictly assert the count here
-    assert isinstance(admin_reg_resp.json()["data"], list)
+    assert admin_registrations.status_code == 200
+    assert len(admin_registrations.json()["data"]) == 1
+
+    ticket = await async_client.get(
+        f"/api/v1/registrations/{registration_id}/ticket",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert ticket.status_code == 200
+    assert verify_ticket_payload(ticket.json()["data"]["qrPayload"])
+
+    events = await async_client.get("/api/v1/events")
+    assert events.status_code == 200
+    assert isinstance(events.json()["data"], list)
+    assert events.json()["pagination"]["total"] == 1

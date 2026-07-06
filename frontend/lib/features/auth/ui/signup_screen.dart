@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/features/auth/providers/auth_provider.dart';
+import 'package:frontend/core/validators.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -59,21 +60,21 @@ class _SignupScreenState extends State<SignupScreen> {
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Name'),
-                validator: (val) => val != null && val.isNotEmpty ? null : 'Required',
+                validator: Validators.requiredField,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _emailController,
                 decoration: const InputDecoration(labelText: 'Email'),
                 keyboardType: TextInputType.emailAddress,
-                validator: (val) => val != null && val.contains('@') ? null : 'Enter valid email',
+                validator: Validators.email,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _passwordController,
                 decoration: const InputDecoration(labelText: 'Password'),
                 obscureText: true,
-                validator: (val) => val != null && val.length >= 6 ? null : 'Minimum 6 chars',
+                validator: Validators.password,
               ),
               const SizedBox(height: 16),
               SwitchListTile(

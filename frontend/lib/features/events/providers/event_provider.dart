@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/core/models/paginated_response.dart';
 import 'package:frontend/features/events/models/event.dart';
 import 'package:frontend/features/events/services/event_service.dart';
 
@@ -6,19 +7,23 @@ class EventProvider extends ChangeNotifier {
   final EventService _eventService;
 
   List<Event> _events = [];
+  Pagination? _pagination;
   bool _isLoading = false;
   String? _error;
 
   EventProvider(this._eventService);
 
   List<Event> get events => _events;
+  Pagination? get pagination => _pagination;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  Future<void> fetchEvents({String? category}) async {
+  Future<void> fetchEvents({String? category, int page = 1, int limit = 20}) async {
     _setLoading(true);
     try {
-      _events = await _eventService.getEvents(category: category);
+      final response = await _eventService.getEvents(category: category, page: page, limit: limit);
+      _events = response.data;
+      _pagination = response.pagination;
       _setLoading(false);
     } catch (e) {
       _error = 'Failed to fetch events';
@@ -26,14 +31,16 @@ class EventProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> searchEvents(String query) async {
+  Future<void> searchEvents(String query, {int page = 1, int limit = 20}) async {
     if (query.isEmpty) {
       await fetchEvents();
       return;
     }
     _setLoading(true);
     try {
-      _events = await _eventService.searchEvents(query);
+      final response = await _eventService.searchEvents(query, page: page, limit: limit);
+      _events = response.data;
+      _pagination = response.pagination;
       _setLoading(false);
     } catch (e) {
       _error = 'Search failed';

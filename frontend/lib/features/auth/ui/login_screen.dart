@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/features/auth/providers/auth_provider.dart';
+import 'package:frontend/core/validators.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -57,14 +58,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _emailController,
                 decoration: const InputDecoration(labelText: 'Email'),
                 keyboardType: TextInputType.emailAddress,
-                validator: (val) => val != null && val.contains('@') ? null : 'Enter valid email',
+                validator: Validators.email,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _passwordController,
                 decoration: const InputDecoration(labelText: 'Password'),
                 obscureText: true,
-                validator: (val) => val != null && val.length >= 6 ? null : 'Minimum 6 chars',
+                validator: Validators.password,
               ),
               const SizedBox(height: 32),
               ElevatedButton(

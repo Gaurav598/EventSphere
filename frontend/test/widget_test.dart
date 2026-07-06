@@ -1,30 +1,45 @@
 // This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:provider/provider.dart';
 import 'package:frontend/main.dart';
+import 'package:frontend/core/api_client.dart';
+import 'package:frontend/features/auth/providers/auth_provider.dart';
+import 'package:frontend/features/auth/services/auth_service.dart';
+import 'package:frontend/features/events/providers/event_provider.dart';
+import 'package:frontend/features/events/services/event_service.dart';
+import 'package:frontend/features/tickets/providers/ticket_provider.dart';
+import 'package:frontend/features/tickets/services/ticket_service.dart';
+import 'package:frontend/features/admin/providers/admin_provider.dart';
+import 'package:frontend/features/admin/services/admin_service.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('App smoke test', (WidgetTester tester) async {
+    final apiClient = ApiClient();
+
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const EventSphereApp());
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(
+            create: (_) => AuthProvider(AuthService(apiClient.dio)),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => EventProvider(EventService(apiClient.dio)),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => TicketProvider(TicketService(apiClient.dio)),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => AdminProvider(AdminService(apiClient.dio)),
+          ),
+        ],
+        child: const EventSphereApp(),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify that the app mounts successfully
+    expect(find.byType(EventSphereApp), findsOneWidget);
   });
 }
+

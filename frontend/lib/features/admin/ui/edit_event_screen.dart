@@ -2,25 +2,50 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/features/admin/providers/admin_provider.dart';
+import 'package:frontend/features/events/models/event.dart';
 import 'package:frontend/core/validators.dart';
 
-class CreateEventScreen extends StatefulWidget {
-  const CreateEventScreen({super.key});
+class EditEventScreen extends StatefulWidget {
+  final Event event;
+
+  const EditEventScreen({super.key, required this.event});
 
   @override
-  State<CreateEventScreen> createState() => _CreateEventScreenState();
+  State<EditEventScreen> createState() => _EditEventScreenState();
 }
 
-class _CreateEventScreenState extends State<CreateEventScreen> {
+class _EditEventScreenState extends State<EditEventScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _descController = TextEditingController();
-  final _categoryController = TextEditingController(text: 'conference');
-  final _locationController = TextEditingController();
-  final _capacityController = TextEditingController();
+  late TextEditingController _nameController;
+  late TextEditingController _descController;
+  late TextEditingController _categoryController;
+  late TextEditingController _locationController;
+  late TextEditingController _capacityController;
   
-  DateTime? _eventDate;
-  DateTime? _registrationDeadline;
+  late DateTime? _eventDate;
+  late DateTime? _registrationDeadline;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.event.name);
+    _descController = TextEditingController(text: widget.event.description);
+    _categoryController = TextEditingController(text: widget.event.category);
+    _locationController = TextEditingController(text: widget.event.location);
+    _capacityController = TextEditingController(text: widget.event.capacity.toString());
+    _eventDate = widget.event.eventDate;
+    _registrationDeadline = widget.event.registrationDeadline;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descController.dispose();
+    _categoryController.dispose();
+    _locationController.dispose();
+    _capacityController.dispose();
+    super.dispose();
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _eventDate == null || _registrationDeadline == null) {
@@ -38,21 +63,22 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       "capacity": int.tryParse(_capacityController.text.trim()) ?? 0,
     };
 
-    final success = await context.read<AdminProvider>().createEvent(data);
+    final success = await context.read<AdminProvider>().updateEvent(widget.event.id, data);
     
     if (!mounted) return;
     
     if (success) {
       context.pop();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to create event.')));
+      final err = context.read<AdminProvider>().error ?? 'Failed to update event.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
     }
   }
 
   Future<void> _pickDate(bool isEventDate) async {
     final date = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
+      initialDate: isEventDate ? _eventDate ?? DateTime.now() : _registrationDeadline ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
@@ -72,7 +98,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     final adminProvider = context.watch<AdminProvider>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Event')),
+      appBar: AppBar(title: const Text('Edit Event')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -134,7 +160,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 onPressed: adminProvider.isLoading ? null : _submit,
                 child: adminProvider.isLoading
                     ? const CircularProgressIndicator()
-                    : const Text('CREATE EVENT'),
+                    : const Text('SAVE CHANGES'),
               ),
             ],
           ),

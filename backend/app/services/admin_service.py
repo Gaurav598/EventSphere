@@ -1,223 +1,410 @@
+import asyncio
 import csv
 import io
-from typing import Dict, Any, List
 from datetime import datetime, timezone
-from bson import ObjectId
+from typing import Any
+
+from pymongo import ReturnDocument
+
+from app.core.identifiers import parse_object_id
 from app.db.mongo import get_database
-from app.db.redis_client import get_redis
-from app.models.event import EventCreate, EventUpdate, EventInDB, EventResponse
-from app.models.user import UserResponse
+from app.db.redis_client import invalidate_event_cache
 from app.exceptions.handlers import AppException
+from app.models.event import EventCreate, EventInDB, EventResponse, EventUpdate
+from app.models.user import UserResponse
+
 
 class AdminService:
     @staticmethod
-    async def create_event(event_data: EventCreate, admin_id: str) -> Dict[str, Any]:
+    async def get_events(
+        admin_id: str,
+        page: int = 1,
+        limit: int = 20,
+    ) -> dict[str, Any]:
         db = get_database()
-        
-        new_event = EventInDB(
-            **event_data.model_dump(),
-            createdBy=ObjectId(admin_id)
+        admin_object_id = parse_object_id(admin_id, "admin")
+        query = {"createdBy": admin_object_id, "isDeleted": False}
+        skip = (page - 1) * limit
+        total_events = await db.events.count_documents(query)
+        cursor = (
+            db.events.find(query)
+            .sort("createdAt", -1)
+            .skip(skip)
+            .limit(limit)
         )
-        
-        event_dict = new_event.model_dump(by_alias=True, exclude={"id"})
-        result = await db.events.insert_one(event_dict)
-        
-        created_event = await db.events.find_one({"_id": result.inserted_id})
-        
-        # Clear redis cache
-        redis = get_redis()
-        # simplified cache clearing, ideally use SCAN to clear pattern
-        # for now let's just rely on TTL as specified in docs (acceptable staleness)
-        
-        return EventResponse(**created_event).model_dump(mode='json', by_alias=True)
-
-    @staticmethod
-    async def update_event(event_id: str, event_data: EventUpdate) -> Dict[str, Any]:
-        db = get_database()
-        try:
-            obj_id = ObjectId(event_id)
-        except Exception:
-            raise AppException(code="INVALID_ID", message="Invalid event ID", status_code=400)
-            
-        current_event = await db.events.find_one({"_id": obj_id, "isDeleted": False})
-        if not current_event:
-            raise AppException(code="EVENT_NOT_FOUND", message="Event not found", status_code=404)
-            
-        update_data = {k: v for k, v in event_data.model_dump().items() if v is not None}
-        if "capacity" in update_data:
-            if update_data["capacity"] < current_event.get("registeredCount", 0):
-                raise AppException(code="INVALID_CAPACITY", message="Cannot reduce capacity below current registration count", status_code=400)
-                
-        update_data["updatedAt"] = datetime.now(timezone.utc)
-        
-        await db.events.update_one({"_id": obj_id}, {"$set": update_data})
-        updated_event = await db.events.find_one({"_id": obj_id})
-        
-        return EventResponse(**updated_event).model_dump(mode='json', by_alias=True)
-
-    @staticmethod
-    async def delete_event(event_id: str) -> bool:
-        db = get_database()
-        try:
-            obj_id = ObjectId(event_id)
-        except Exception:
-            raise AppException(code="INVALID_ID", message="Invalid event ID", status_code=400)
-            
-        result = await db.events.update_one(
-            {"_id": obj_id}, 
-            {"$set": {"isDeleted": True, "updatedAt": datetime.now(timezone.utc)}}
-        )
-        
-        if result.modified_count == 0:
-            raise AppException(code="EVENT_NOT_FOUND", message="Event not found", status_code=404)
-            
-        return True
-
-    @staticmethod
-    async def close_registration(event_id: str) -> bool:
-        db = get_database()
-        try:
-            obj_id = ObjectId(event_id)
-        except Exception:
-            raise AppException(code="INVALID_ID", message="Invalid event ID", status_code=400)
-            
-        result = await db.events.update_one(
-            {"_id": obj_id, "isDeleted": False}, 
-            {"$set": {"isRegistrationOpen": False, "updatedAt": datetime.now(timezone.utc)}}
-        )
-        
-        if result.modified_count == 0:
-            raise AppException(code="EVENT_NOT_FOUND", message="Event not found", status_code=404)
-            
-        return True
-
-    @staticmethod
-    async def get_event_registrations(event_id: str) -> List[Dict[str, Any]]:
-        db = get_database()
-        try:
-            obj_id = ObjectId(event_id)
-        except Exception:
-            raise AppException(code="INVALID_ID", message="Invalid event ID", status_code=400)
-            
-        pipeline = [
-            {"$match": {"eventId": obj_id}},
-            {"$lookup": {
-                "from": "users",
-                "localField": "userId",
-                "foreignField": "_id",
-                "as": "user"
-            }},
-            {"$unwind": "$user"}
+        items = [
+            EventResponse(**document).model_dump(mode="json", by_alias=True)
+            async for document in cursor
         ]
-        
-        cursor = db.registrations.aggregate(pipeline)
-        results = []
-        async for doc in cursor:
-            user_data = UserResponse(**doc["user"]).model_dump(mode='json', by_alias=True)
-            results.append({
-                "registrationId": str(doc["_id"]),
-                "status": doc.get("status"),
-                "registeredAt": doc.get("registeredAt").isoformat() if doc.get("registeredAt") else None,
-                "user": user_data
-            })
-            
-        return results
+        return {
+            "items": items,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_events,
+                "totalPages": (total_events + limit - 1) // limit,
+            },
+        }
+
+    @staticmethod
+    async def create_event(
+        event_data: EventCreate,
+        admin_id: str,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        AdminService._validate_event_timing(
+            event_data.eventDate,
+            event_data.registrationDeadline,
+            now,
+        )
+        db = get_database()
+        event = EventInDB(
+            **event_data.model_dump(),
+            createdBy=parse_object_id(admin_id, "admin"),
+        )
+        event_document = event.model_dump(by_alias=True, exclude={"id"})
+        result = await db.events.insert_one(event_document)
+        created_event = await db.events.find_one({"_id": result.inserted_id})
+        await invalidate_event_cache()
+        return EventResponse(**created_event).model_dump(
+            mode="json",
+            by_alias=True,
+        )
+
+    @staticmethod
+    async def update_event(
+        event_id: str,
+        event_data: EventUpdate,
+    ) -> dict[str, Any]:
+        db = get_database()
+        event_object_id = parse_object_id(event_id, "event")
+        current = await AdminService._get_event_or_404(event_object_id)
+        now = datetime.now(timezone.utc)
+        if current["eventDate"] <= now:
+            raise AppException(
+                code="EVENT_STARTED",
+                message="An event cannot be edited after it starts",
+                status_code=400,
+            )
+
+        update_data = event_data.model_dump(exclude_none=True)
+        if not update_data:
+            return EventResponse(**current).model_dump(
+                mode="json",
+                by_alias=True,
+            )
+
+        merged = {
+            field: update_data.get(field, current[field])
+            for field in (
+                "name",
+                "description",
+                "category",
+                "location",
+                "eventDate",
+                "registrationDeadline",
+                "capacity",
+                "categoryFields",
+            )
+        }
+        validated = EventCreate(**merged)
+        AdminService._validate_event_timing(
+            validated.eventDate,
+            validated.registrationDeadline,
+            now,
+        )
+        update_data["updatedAt"] = now
+
+        update_filter: dict[str, Any] = {
+            "_id": event_object_id,
+            "isDeleted": False,
+            "eventDate": {"$gt": now},
+        }
+        if "capacity" in update_data:
+            update_filter["$expr"] = {
+                "$lte": ["$registeredCount", update_data["capacity"]]
+            }
+
+        updated = await db.events.find_one_and_update(
+            update_filter,
+            {"$set": update_data},
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated is None:
+            latest = await AdminService._get_event_or_404(event_object_id)
+            if update_data.get("capacity", latest["capacity"]) < latest.get(
+                "registeredCount",
+                0,
+            ):
+                raise AppException(
+                    code="INVALID_CAPACITY",
+                    message=(
+                        "Cannot reduce capacity below current registration count"
+                    ),
+                    status_code=400,
+                )
+            raise AppException(
+                code="EVENT_UPDATE_CONFLICT",
+                message="The event changed while it was being updated",
+                status_code=409,
+            )
+
+        await invalidate_event_cache()
+        return EventResponse(**updated).model_dump(mode="json", by_alias=True)
+
+    @staticmethod
+    async def delete_event(event_id: str) -> None:
+        db = get_database()
+        event_object_id = parse_object_id(event_id, "event")
+        result = await db.events.update_one(
+            {"_id": event_object_id, "isDeleted": False},
+            {
+                "$set": {
+                    "isDeleted": True,
+                    "isRegistrationOpen": False,
+                    "updatedAt": datetime.now(timezone.utc),
+                }
+            },
+        )
+        if result.matched_count == 0:
+            raise AppException(
+                code="EVENT_NOT_FOUND",
+                message="Event not found",
+                status_code=404,
+            )
+        await invalidate_event_cache()
+
+    @staticmethod
+    async def close_registration(event_id: str) -> None:
+        db = get_database()
+        event_object_id = parse_object_id(event_id, "event")
+        event = await db.events.find_one_and_update(
+            {"_id": event_object_id, "isDeleted": False},
+            {
+                "$set": {
+                    "isRegistrationOpen": False,
+                    "updatedAt": datetime.now(timezone.utc),
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if event is None:
+            raise AppException(
+                code="EVENT_NOT_FOUND",
+                message="Event not found",
+                status_code=404,
+            )
+        await invalidate_event_cache()
+
+    @staticmethod
+    async def get_event_registrations(
+        event_id: str,
+    ) -> list[dict[str, Any]]:
+        db = get_database()
+        event_object_id = parse_object_id(event_id, "event")
+        await AdminService._get_event_or_404(event_object_id)
+        pipeline = [
+            {"$match": {"eventId": event_object_id}},
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "userId",
+                    "foreignField": "_id",
+                    "as": "user",
+                }
+            },
+            {"$unwind": "$user"},
+            {"$sort": {"registeredAt": -1}},
+        ]
+        registrations = []
+        async for document in db.registrations.aggregate(pipeline):
+            registrations.append(
+                {
+                    "registrationId": str(document["_id"]),
+                    "status": document["status"],
+                    "registeredAt": document["registeredAt"].isoformat(),
+                    "user": UserResponse(**document["user"]).model_dump(
+                        mode="json",
+                        by_alias=True,
+                    ),
+                }
+            )
+        return registrations
 
     @staticmethod
     async def export_registrations(event_id: str) -> str:
         registrations = await AdminService.get_event_registrations(event_id)
-        
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Registration ID", "Status", "Registered At", "User Name", "User Email"])
-        
-        for reg in registrations:
-            writer.writerow([
-                reg["registrationId"],
-                reg["status"],
-                reg["registeredAt"],
-                reg["user"]["name"],
-                reg["user"]["email"]
-            ])
-            
+        writer.writerow(
+            [
+                "Registration ID",
+                "Status",
+                "Registered At",
+                "User Name",
+                "User Email",
+            ]
+        )
+        for registration in registrations:
+            writer.writerow(
+                [
+                    registration["registrationId"],
+                    registration["status"],
+                    registration["registeredAt"],
+                    AdminService._safe_csv_cell(
+                        registration["user"]["name"]
+                    ),
+                    AdminService._safe_csv_cell(
+                        registration["user"]["email"]
+                    ),
+                ]
+            )
         return output.getvalue()
 
     @staticmethod
-    async def get_top_events() -> List[Dict[str, Any]]:
+    async def get_top_events() -> list[dict[str, Any]]:
         db = get_database()
         pipeline = [
-            {"$group": {"_id": "$eventId", "totalRegistrations": {"$sum": 1}}},
+            {"$match": {"status": "confirmed"}},
+            {
+                "$group": {
+                    "_id": "$eventId",
+                    "totalRegistrations": {"$sum": 1},
+                }
+            },
             {"$sort": {"totalRegistrations": -1}},
             {"$limit": 5},
-            {"$lookup": {
-                "from": "events",
-                "localField": "_id",
-                "foreignField": "_id",
-                "as": "event"
-            }},
-            {"$unwind": "$event"}
-        ]
-        
-        cursor = db.registrations.aggregate(pipeline)
-        results = []
-        async for doc in cursor:
-            event_data = EventResponse(**doc["event"]).model_dump(mode='json', by_alias=True)
-            results.append({
-                "eventId": str(doc["_id"]),
-                "totalRegistrations": doc["totalRegistrations"],
-                "event": event_data
-            })
-        return results
-
-    @staticmethod
-    async def get_category_wise() -> List[Dict[str, Any]]:
-        db = get_database()
-        pipeline = [
-            {"$lookup": {"from": "events", "localField": "eventId", "foreignField": "_id", "as": "event"}},
+            {
+                "$lookup": {
+                    "from": "events",
+                    "localField": "_id",
+                    "foreignField": "_id",
+                    "as": "event",
+                }
+            },
             {"$unwind": "$event"},
-            {"$group": {"_id": "$event.category", "count": {"$sum": 1}}}
         ]
-        
-        cursor = db.registrations.aggregate(pipeline)
         results = []
-        async for doc in cursor:
-            results.append({
-                "category": doc["_id"],
-                "count": doc["count"]
-            })
+        async for document in db.registrations.aggregate(pipeline):
+            results.append(
+                {
+                    "eventId": str(document["_id"]),
+                    "totalRegistrations": document["totalRegistrations"],
+                    "event": EventResponse(**document["event"]).model_dump(
+                        mode="json",
+                        by_alias=True,
+                    ),
+                }
+            )
         return results
 
     @staticmethod
-    async def get_monthly_trend() -> List[Dict[str, Any]]:
+    async def get_category_wise() -> list[dict[str, Any]]:
         db = get_database()
         pipeline = [
-            {"$group": {
-                "_id": {"$dateToString": {"format": "%Y-%m", "date": "$registeredAt"}},
-                "count": {"$sum": 1}
-            }},
-            {"$sort": {"_id": 1}}
+            {"$match": {"status": "confirmed"}},
+            {
+                "$lookup": {
+                    "from": "events",
+                    "localField": "eventId",
+                    "foreignField": "_id",
+                    "as": "event",
+                }
+            },
+            {"$unwind": "$event"},
+            {
+                "$group": {
+                    "_id": "$event.category",
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"count": -1}},
         ]
-        
-        cursor = db.registrations.aggregate(pipeline)
-        results = []
-        async for doc in cursor:
-            results.append({
-                "month": doc["_id"],
-                "count": doc["count"]
-            })
-        return results
+        return [
+            {"category": document["_id"], "count": document["count"]}
+            async for document in db.registrations.aggregate(pipeline)
+        ]
 
     @staticmethod
-    async def get_analytics_summary() -> Dict[str, Any]:
+    async def get_monthly_trend() -> list[dict[str, Any]]:
         db = get_database()
-        
-        total_registrations = await db.registrations.count_documents({})
-        upcoming_events = await db.events.count_documents({
-            "eventDate": {"$gte": datetime.now(timezone.utc)},
-            "isDeleted": False
-        })
-        
+        pipeline = [
+            {"$match": {"status": "confirmed"}},
+            {
+                "$group": {
+                    "_id": {
+                        "$dateToString": {
+                            "format": "%Y-%m",
+                            "date": "$registeredAt",
+                        }
+                    },
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"_id": 1}},
+        ]
+        return [
+            {"month": document["_id"], "count": document["count"]}
+            async for document in db.registrations.aggregate(pipeline)
+        ]
+
+    @staticmethod
+    async def get_analytics_summary() -> dict[str, Any]:
+        db = get_database()
+        total_registrations, upcoming_events = await asyncio.gather(
+            db.registrations.count_documents({"status": "confirmed"}),
+            db.events.count_documents(
+                {
+                    "eventDate": {"$gte": datetime.now(timezone.utc)},
+                    "isDeleted": False,
+                }
+            ),
+        )
         return {
             "totalRegistrations": total_registrations,
-            "upcomingEventsCount": upcoming_events
+            "upcomingEventsCount": upcoming_events,
         }
+
+    @staticmethod
+    async def _get_event_or_404(event_id):
+        event = await get_database().events.find_one(
+            {"_id": event_id, "isDeleted": False}
+        )
+        if event is None:
+            raise AppException(
+                code="EVENT_NOT_FOUND",
+                message="Event not found",
+                status_code=404,
+            )
+        return event
+
+    @staticmethod
+    def _validate_event_timing(
+        event_date: datetime,
+        registration_deadline: datetime,
+        now: datetime,
+    ) -> None:
+        if event_date <= now:
+            raise AppException(
+                code="INVALID_EVENT_DATE",
+                message="eventDate must be in the future",
+                status_code=400,
+            )
+        if registration_deadline < now:
+            raise AppException(
+                code="INVALID_REGISTRATION_DEADLINE",
+                message="registrationDeadline cannot be in the past",
+                status_code=400,
+            )
+        if registration_deadline > event_date:
+            raise AppException(
+                code="INVALID_REGISTRATION_DEADLINE",
+                message="registrationDeadline cannot be after eventDate",
+                status_code=400,
+            )
+
+    @staticmethod
+    def _safe_csv_cell(value: str) -> str:
+        if value.startswith(("=", "+", "-", "@")):
+            return f"'{value}"
+        return value

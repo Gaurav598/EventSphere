@@ -26,6 +26,13 @@ class AppTheme {
         ),
         filled: true,
       ),
+      cardTheme: CardThemeData(
+        margin: const EdgeInsets.only(bottom: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 2,
+      ),
     );
   }
 
@@ -53,6 +60,13 @@ class AppTheme {
           borderRadius: BorderRadius.circular(8),
         ),
         filled: true,
+      ),
+      cardTheme: CardThemeData(
+        margin: const EdgeInsets.only(bottom: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 2,
       ),
     );
   }

@@ -33,6 +33,10 @@ import 'package:frontend/features/tickets/models/ticket.dart';
 // UI - Admin
 import 'package:frontend/features/admin/ui/admin_dashboard.dart';
 import 'package:frontend/features/admin/ui/create_event_screen.dart';
+import 'package:frontend/features/admin/ui/edit_event_screen.dart';
+import 'package:frontend/features/admin/ui/event_registrations_screen.dart';
+
+import 'package:frontend/features/events/models/event.dart';
 
 void main() {
   final apiClient = ApiClient();
@@ -68,11 +72,46 @@ class EventSphereApp extends StatefulWidget {
 class _EventSphereAppState extends State<EventSphereApp> {
   late final GoRouter _router;
 
+  late final AuthProvider _authProvider;
+
   @override
   void initState() {
     super.initState();
+    _authProvider = context.read<AuthProvider>();
+    
     _router = GoRouter(
       initialLocation: '/',
+      refreshListenable: _authProvider,
+      redirect: (context, state) {
+        final isLoading = _authProvider.isLoading;
+        final isAuthenticated = _authProvider.isAuthenticated;
+        final isAdmin = _authProvider.isAdmin;
+        final isAuthRoute = state.matchedLocation == '/login' || state.matchedLocation == '/signup';
+        final isSplashRoute = state.matchedLocation == '/';
+
+        if (isLoading) {
+          return isSplashRoute ? null : '/';
+        }
+
+        if (!isAuthenticated) {
+          if (!isAuthRoute) return '/login';
+          return null;
+        }
+
+        if (isAuthenticated && (isAuthRoute || isSplashRoute)) {
+          return isAdmin ? '/admin' : '/events';
+        }
+
+        final isAdminRoute = state.matchedLocation.startsWith('/admin');
+        if (isAdminRoute && !isAdmin) {
+          return '/events';
+        }
+        if (!isAdminRoute && isAdmin && state.matchedLocation != '/') {
+          return '/admin';
+        }
+
+        return null;
+      },
       routes: [
         GoRoute(
           path: '/',
@@ -115,6 +154,20 @@ class _EventSphereAppState extends State<EventSphereApp> {
         GoRoute(
           path: '/admin/create-event',
           builder: (context, state) => const CreateEventScreen(),
+        ),
+        GoRoute(
+          path: '/admin/events/:id/edit',
+          builder: (context, state) {
+            final event = state.extra as Event;
+            return EditEventScreen(event: event);
+          },
+        ),
+        GoRoute(
+          path: '/admin/events/:id/registrations',
+          builder: (context, state) {
+            final event = state.extra as Event;
+            return EventRegistrationsScreen(event: event);
+          },
         ),
       ],
     );

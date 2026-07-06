@@ -1,14 +1,13 @@
 from fastapi import APIRouter, Depends
-from typing import Dict, Any
-from app.models.user import UserCreate, UserLogin, UserResponse, UserInDB
-from app.services.auth_service import AuthService
+
 from app.dependencies.auth import get_current_user
 from app.dependencies.rate_limit import RateLimiter
+from app.models.user import UserCreate, UserInDB, UserLogin, UserResponse
+from app.services.auth_service import AuthService
 
 router = APIRouter()
-
-# 5 attempts per 60 seconds per IP
 login_rate_limiter = RateLimiter(key_prefix="login", limit=5, window=60)
+
 
 @router.post("/register", status_code=201)
 async def register(user_data: UserCreate):
@@ -16,8 +15,9 @@ async def register(user_data: UserCreate):
     return {
         "success": True,
         "data": result,
-        "message": "Registration successful"
+        "message": "Registration successful",
     }
+
 
 @router.post("/login", dependencies=[Depends(login_rate_limiter)])
 async def login(login_data: UserLogin):
@@ -25,14 +25,15 @@ async def login(login_data: UserLogin):
     return {
         "success": True,
         "data": result,
-        "message": "Login successful"
+        "message": "Login successful",
     }
+
 
 @router.get("/me")
 async def get_me(current_user: UserInDB = Depends(get_current_user)):
     user_response = UserResponse(**current_user.model_dump(by_alias=True))
     return {
         "success": True,
-        "data": user_response.model_dump(by_alias=True),
-        "message": "User profile retrieved"
+        "data": user_response.model_dump(mode="json", by_alias=True),
+        "message": "User profile retrieved",
     }

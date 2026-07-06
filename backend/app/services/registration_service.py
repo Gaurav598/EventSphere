@@ -1,150 +1,220 @@
 import json
 import logging
-from typing import Dict, Any, List
-from bson import ObjectId
+from datetime import datetime, timezone
+from typing import Any
+
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
+from redis.exceptions import RedisError
+
+from app.core.identifiers import parse_object_id
 from app.db.mongo import get_database
-from app.db.redis_client import get_redis
+from app.db.redis_client import get_redis, invalidate_event_cache
+from app.exceptions.handlers import AppException
+from app.models.event import EventResponse
 from app.models.registration import RegistrationInDB, RegistrationResponse
 from app.models.ticket import TicketResponse
-from app.exceptions.handlers import AppException
 
 logger = logging.getLogger(__name__)
 
+
 class RegistrationService:
     @staticmethod
-    async def register_user_for_event(user_id: str, event_id: str) -> Dict[str, Any]:
+    async def register_user_for_event(
+        user_id: str,
+        event_id: str,
+    ) -> dict[str, Any]:
         db = get_database()
-        
-        try:
-            event_obj_id = ObjectId(event_id)
-            user_obj_id = ObjectId(user_id)
-        except Exception:
-            raise AppException(code="INVALID_ID", message="Invalid ID format", status_code=400)
-            
-        # Check if already registered
-        existing = await db.registrations.find_one({"userId": user_obj_id, "eventId": event_obj_id})
-        if existing:
-            raise AppException(code="ALREADY_REGISTERED", message="User already registered for this event", status_code=409)
-            
-        # Atomic capacity check and increment
-        # find_one_and_update with condition: registeredCount < capacity and isRegistrationOpen == True
+        event_object_id = parse_object_id(event_id, "event")
+        user_object_id = parse_object_id(user_id, "user")
+        now = datetime.now(timezone.utc)
+
         event = await db.events.find_one_and_update(
             {
-                "_id": event_obj_id,
+                "_id": event_object_id,
+                "eventDate": {"$gt": now},
+                "registrationDeadline": {"$gte": now},
                 "$expr": {"$lt": ["$registeredCount", "$capacity"]},
                 "isRegistrationOpen": True,
-                "isDeleted": False
+                "isDeleted": False,
             },
-            {"$inc": {"registeredCount": 1}},
-            return_document=ReturnDocument.AFTER
+            {
+                "$inc": {"registeredCount": 1},
+                "$set": {"updatedAt": now},
+            },
+            return_document=ReturnDocument.AFTER,
         )
-        
-        if not event:
-            # Check why it failed
-            check_event = await db.events.find_one({"_id": event_obj_id})
-            if not check_event or check_event.get("isDeleted"):
-                raise AppException(code="EVENT_NOT_FOUND", message="Event not found", status_code=404)
-            if not check_event.get("isRegistrationOpen"):
-                raise AppException(code="REGISTRATION_CLOSED", message="Registration is closed for this event", status_code=400)
-            if check_event.get("registeredCount", 0) >= check_event.get("capacity", 0):
-                raise AppException(code="EVENT_FULL", message="This event has reached full capacity", status_code=400)
-                
-        # Create registration
-        new_registration = RegistrationInDB(
-            userId=user_obj_id,
-            eventId=event_obj_id,
-        )
-        
-        reg_dict = new_registration.model_dump(by_alias=True, exclude={"id"})
-        result = await db.registrations.insert_one(reg_dict)
-        
-        # Publish to Redis Pub/Sub
-        try:
-            redis = get_redis()
-            pubsub_message = {
-                "eventId": event_id,
-                "userId": user_id,
-                "registrationId": str(result.inserted_id),
-                "timestamp": new_registration.registeredAt.isoformat()
-            }
-            await redis.publish("registration.created", json.dumps(pubsub_message))
-        except Exception as e:
-            logger.warning(f"Failed to publish registration event to Redis: {e}")
-            
-        # Clear events list cache
-        try:
-            redis = get_redis()
-            # In a real app we might delete keys matching a pattern, here we can clear specific or rely on TTL
-            # For simplicity, we just rely on TTL or we could use Redis SCAN to delete all events:list keys
-            # To be safe, we just let TTL expire for the list
-        except Exception:
-            pass
+        if event is None:
+            await RegistrationService._raise_registration_blocker(event_object_id, now)
 
-        return {"registrationId": str(result.inserted_id), "status": "confirmed"}
+        registration = RegistrationInDB(
+            userId=user_object_id,
+            eventId=event_object_id,
+        )
+        registration_document = registration.model_dump(
+            by_alias=True,
+            exclude={"id"},
+        )
+        try:
+            result = await db.registrations.insert_one(registration_document)
+        except DuplicateKeyError as exc:
+            await RegistrationService._rollback_capacity(event_object_id)
+            raise AppException(
+                code="ALREADY_REGISTERED",
+                message="User already registered for this event",
+                status_code=409,
+            ) from exc
+        except Exception:
+            await RegistrationService._rollback_capacity(event_object_id)
+            raise
+
+        await invalidate_event_cache()
+        await RegistrationService._publish_registration(
+            event_id=event_id,
+            user_id=user_id,
+            registration_id=str(result.inserted_id),
+            timestamp=registration.registeredAt,
+        )
+        return {
+            "registrationId": str(result.inserted_id),
+            "status": "confirmed",
+        }
 
     @staticmethod
-    async def get_my_registrations(user_id: str) -> List[Dict[str, Any]]:
+    async def _rollback_capacity(event_id) -> None:
         db = get_database()
-        
+        await db.events.update_one(
+            {"_id": event_id, "registeredCount": {"$gt": 0}},
+            {
+                "$inc": {"registeredCount": -1},
+                "$set": {"updatedAt": datetime.now(timezone.utc)},
+            },
+        )
+
+    @staticmethod
+    async def _raise_registration_blocker(event_id, now: datetime) -> None:
+        db = get_database()
+        event = await db.events.find_one({"_id": event_id})
+        if event is None or event.get("isDeleted"):
+            raise AppException(
+                code="EVENT_NOT_FOUND",
+                message="Event not found",
+                status_code=404,
+            )
+        if event.get("eventDate") and event["eventDate"] <= now:
+            raise AppException(
+                code="EVENT_STARTED",
+                message="This event has already started",
+                status_code=400,
+            )
+        if event.get("registrationDeadline") and event["registrationDeadline"] < now:
+            raise AppException(
+                code="REGISTRATION_DEADLINE_PASSED",
+                message="The registration deadline has passed",
+                status_code=400,
+            )
+        if not event.get("isRegistrationOpen"):
+            raise AppException(
+                code="REGISTRATION_CLOSED",
+                message="Registration is closed for this event",
+                status_code=400,
+            )
+        if event.get("registeredCount", 0) >= event.get("capacity", 0):
+            raise AppException(
+                code="EVENT_FULL",
+                message="This event has reached full capacity",
+                status_code=400,
+            )
+        raise AppException(
+            code="REGISTRATION_UNAVAILABLE",
+            message="Registration is currently unavailable",
+            status_code=409,
+        )
+
+    @staticmethod
+    async def _publish_registration(
+        event_id: str,
+        user_id: str,
+        registration_id: str,
+        timestamp: datetime,
+    ) -> None:
+        redis = get_redis()
+        if redis is None:
+            return
+        message = {
+            "eventId": event_id,
+            "userId": user_id,
+            "registrationId": registration_id,
+            "timestamp": timestamp.isoformat(),
+        }
         try:
-            user_obj_id = ObjectId(user_id)
-        except Exception:
-            raise AppException(code="INVALID_ID", message="Invalid ID format", status_code=400)
-            
-        # We can do an aggregation to fetch event details as well
-        pipeline = [
-            {"$match": {"userId": user_obj_id}},
-            {"$lookup": {
-                "from": "events",
-                "localField": "eventId",
-                "foreignField": "_id",
-                "as": "event"
-            }},
-            {"$unwind": "$event"},
-            {"$sort": {"registeredAt": -1}}
-        ]
-        
-        cursor = db.registrations.aggregate(pipeline)
+            await redis.publish("registration.created", json.dumps(message))
+        except RedisError:
+            logger.warning(
+                "Failed to publish registration event to Redis",
+                exc_info=True,
+            )
+
+    @staticmethod
+    async def get_my_registrations(user_id: str) -> list[dict[str, Any]]:
+        db = get_database()
+        user_object_id = parse_object_id(user_id, "user")
+        cursor = db.registrations.find({"userId": user_object_id}).sort(
+            "registeredAt",
+            -1,
+        )
+        registration_documents = [document async for document in cursor]
+        event_ids = list(
+            {document["eventId"] for document in registration_documents}
+        )
+        event_cursor = db.events.find({"_id": {"$in": event_ids}})
+        events = {
+            document["_id"]: EventResponse(**document).model_dump(
+                mode="json",
+                by_alias=True,
+            )
+            async for document in event_cursor
+        }
+
         registrations = []
-        async for doc in cursor:
-            # We construct a custom response combining registration and event basic info
-            item = RegistrationResponse(**doc).model_dump(mode='json', by_alias=True)
-            event_data = doc.get("event", {})
-            event_data["_id"] = str(event_data.get("_id"))
-            if "createdBy" in event_data:
-                event_data["createdBy"] = str(event_data["createdBy"])
-            item["event"] = event_data
-            # Just ensure eventDates are stringified
-            if isinstance(item["event"].get("eventDate"), str) == False and item["event"].get("eventDate") is not None:
-                item["event"]["eventDate"] = item["event"]["eventDate"].isoformat()
-            if isinstance(item["event"].get("registrationDeadline"), str) == False and item["event"].get("registrationDeadline") is not None:
-                 item["event"]["registrationDeadline"] = item["event"]["registrationDeadline"].isoformat()
-            if isinstance(item["event"].get("createdAt"), str) == False and item["event"].get("createdAt") is not None:
-                 item["event"]["createdAt"] = item["event"]["createdAt"].isoformat()
-            if isinstance(item["event"].get("updatedAt"), str) == False and item["event"].get("updatedAt") is not None:
-                 item["event"]["updatedAt"] = item["event"]["updatedAt"].isoformat()
+        for document in registration_documents:
+            item = RegistrationResponse(**document).model_dump(
+                mode="json",
+                by_alias=True,
+            )
+            item["event"] = events.get(document["eventId"])
             registrations.append(item)
-            
         return registrations
 
     @staticmethod
-    async def get_ticket(registration_id: str, user_id: str) -> Dict[str, Any]:
+    async def get_ticket(
+        registration_id: str,
+        user_id: str,
+    ) -> dict[str, Any]:
         db = get_database()
-        
-        try:
-            reg_obj_id = ObjectId(registration_id)
-            user_obj_id = ObjectId(user_id)
-        except Exception:
-            raise AppException(code="INVALID_ID", message="Invalid ID format", status_code=400)
-            
-        # Ensure the registration belongs to the user
-        registration = await db.registrations.find_one({"_id": reg_obj_id, "userId": user_obj_id})
-        if not registration:
-            raise AppException(code="NOT_FOUND", message="Registration not found", status_code=404)
-            
-        ticket = await db.tickets.find_one({"registrationId": reg_obj_id})
-        if not ticket:
-            raise AppException(code="TICKET_NOT_READY", message="Ticket is still being generated. Please try again later.", status_code=404)
-            
-        return TicketResponse(**ticket).model_dump(mode='json', by_alias=True)
+        registration_object_id = parse_object_id(registration_id, "registration")
+        user_object_id = parse_object_id(user_id, "user")
+
+        registration = await db.registrations.find_one(
+            {
+                "_id": registration_object_id,
+                "userId": user_object_id,
+            }
+        )
+        if registration is None:
+            raise AppException(
+                code="REGISTRATION_NOT_FOUND",
+                message="Registration not found",
+                status_code=404,
+            )
+
+        ticket = await db.tickets.find_one(
+            {"registrationId": registration_object_id}
+        )
+        if ticket is None:
+            raise AppException(
+                code="TICKET_NOT_READY",
+                message="Ticket is still being generated. Please try again shortly.",
+                status_code=409,
+            )
+        return TicketResponse(**ticket).model_dump(mode="json", by_alias=True)

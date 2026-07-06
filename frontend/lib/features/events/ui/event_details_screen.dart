@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:frontend/features/events/services/event_service.dart';
 import 'package:frontend/features/events/models/event.dart';
 import 'package:frontend/features/tickets/providers/ticket_provider.dart';
+import 'package:frontend/shared/widgets/loading_view.dart';
+import 'package:frontend/shared/widgets/empty_state_view.dart';
 
 class EventDetailsScreen extends StatefulWidget {
   final String eventId;
@@ -57,14 +59,14 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Event Details')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const LoadingView(),
       );
     }
 
     if (_event == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Event Details')),
-        body: const Center(child: Text('Event not found')),
+        body: const EmptyStateView(message: 'Event not found', icon: Icons.error_outline),
       );
     }
 

@@ -1,33 +1,79 @@
-from typing import Optional, Dict, Any
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
+
 from app.models.pyobjectid import PyObjectId
 
+
+def _ensure_timezone(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Datetime values must include a timezone")
+    return value.astimezone(timezone.utc)
+
+
 class EventBase(BaseModel):
-    name: str
-    description: str
-    category: str
-    location: str
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        str_strip_whitespace=True,
+    )
+
+    name: str = Field(min_length=2, max_length=150)
+    description: str = Field(min_length=1, max_length=5000)
+    category: str = Field(min_length=2, max_length=50)
+    location: str = Field(min_length=2, max_length=250)
     eventDate: datetime
     registrationDeadline: datetime
-    capacity: int
-    categoryFields: Optional[Dict[str, Any]] = {}
+    capacity: int = Field(gt=0, le=1_000_000)
+    categoryFields: dict[str, Any] = Field(default_factory=dict)
+
+    _validate_datetimes = field_validator(
+        "eventDate",
+        "registrationDeadline",
+        mode="after",
+    )(_ensure_timezone)
+
+    @model_validator(mode="after")
+    def validate_deadline(self) -> "EventBase":
+        if self.registrationDeadline > self.eventDate:
+            raise ValueError("registrationDeadline cannot be after eventDate")
+        return self
+
 
 class EventCreate(EventBase):
     pass
 
+
 class EventUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    location: Optional[str] = None
-    eventDate: Optional[datetime] = None
-    registrationDeadline: Optional[datetime] = None
-    capacity: Optional[int] = None
-    categoryFields: Optional[Dict[str, Any]] = None
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str | None = Field(default=None, min_length=2, max_length=150)
+    description: str | None = Field(default=None, min_length=1, max_length=5000)
+    category: str | None = Field(default=None, min_length=2, max_length=50)
+    location: str | None = Field(default=None, min_length=2, max_length=250)
+    eventDate: datetime | None = None
+    registrationDeadline: datetime | None = None
+    capacity: int | None = Field(default=None, gt=0, le=1_000_000)
+    categoryFields: dict[str, Any] | None = None
+
+    _validate_datetimes = field_validator(
+        "eventDate",
+        "registrationDeadline",
+        mode="after",
+    )(
+        lambda value: _ensure_timezone(value) if value is not None else None
+    )
+
 
 class EventInDB(EventBase):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    id: PyObjectId | None = Field(alias="_id", default=None)
     registeredCount: int = 0
     isRegistrationOpen: bool = True
     isDeleted: bool = False
@@ -35,13 +81,12 @@ class EventInDB(EventBase):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+
 class EventResponse(EventBase):
     id: PyObjectId = Field(alias="_id")
     registeredCount: int
     isRegistrationOpen: bool
+    isDeleted: bool = False
     createdBy: PyObjectId
     createdAt: datetime
     updatedAt: datetime
-
-    class Config:
-        populate_by_name = True

@@ -5,9 +5,12 @@ __pycache__/
 .env
 venv/
 env/
+.venv/
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
+test_output.txt
 
 # Flutter / Dart
 .dart_tool/

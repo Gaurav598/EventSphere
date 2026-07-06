@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+venv/
+.venv/
+env/
+.env
+Dockerfile
+.git/
+.gitignore
+test_output.txt

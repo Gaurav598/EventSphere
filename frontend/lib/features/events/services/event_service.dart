@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:frontend/core/models/paginated_response.dart';
 import 'package:frontend/features/events/models/event.dart';
 
 class EventService {
@@ -6,7 +7,7 @@ class EventService {
 
   EventService(this.dio);
 
-  Future<List<Event>> getEvents({int page = 1, int limit = 10, String? category}) async {
+  Future<PaginatedResponse<Event>> getEvents({int page = 1, int limit = 10, String? category}) async {
     final Map<String, dynamic> queryParams = {
       'page': page,
       'limit': limit,
@@ -16,12 +17,12 @@ class EventService {
     }
     
     final response = await dio.get('/events', queryParameters: queryParams);
-    return (response.data['data'] as List).map((e) => Event.fromJson(e)).toList();
+    return PaginatedResponse<Event>.fromJson(response.data, Event.fromJson);
   }
 
-  Future<List<Event>> searchEvents(String query) async {
-    final response = await dio.get('/events/search', queryParameters: {'q': query});
-    return (response.data['data'] as List).map((e) => Event.fromJson(e)).toList();
+  Future<PaginatedResponse<Event>> searchEvents(String query, {int page = 1, int limit = 10}) async {
+    final response = await dio.get('/events/search', queryParameters: {'q': query, 'page': page, 'limit': limit});
+    return PaginatedResponse<Event>.fromJson(response.data, Event.fromJson);
   }
 
   Future<Event> getEventDetails(String id) async {

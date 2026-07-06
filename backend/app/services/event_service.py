@@ -1,109 +1,154 @@
-import json
 import hashlib
-from typing import List, Dict, Any, Optional
-from bson import ObjectId
+import json
+import logging
+import re
+from datetime import datetime, timezone
+from typing import Any
+
+from redis.exceptions import RedisError
+
+from app.core.config import settings
+from app.core.identifiers import parse_object_id
 from app.db.mongo import get_database
 from app.db.redis_client import get_redis
-from app.models.event import EventResponse
 from app.exceptions.handlers import AppException
+from app.models.event import EventResponse
+
+logger = logging.getLogger(__name__)
+
 
 class EventService:
     @staticmethod
-    async def get_events(page: int = 1, limit: int = 20) -> Dict[str, Any]:
+    async def get_events(
+        page: int = 1,
+        limit: int = 20,
+        category: str | None = None,
+        location: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        available_only: bool = False,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        query: dict[str, Any] = {
+            "isDeleted": False,
+            "eventDate": {"$gte": max(date_from or now, now)},
+        }
+        if date_to is not None:
+            query["eventDate"]["$lte"] = date_to
+        if category:
+            query["category"] = {
+                "$regex": f"^{re.escape(category)}$",
+                "$options": "i",
+            }
+        if location:
+            query["location"] = {
+                "$regex": f"^{re.escape(location)}$",
+                "$options": "i",
+            }
+        if available_only:
+            query.update(
+                {
+                    "isRegistrationOpen": True,
+                    "registrationDeadline": {"$gte": now},
+                    "$expr": {"$lt": ["$registeredCount", "$capacity"]},
+                }
+            )
+        return await EventService._get_event_page(query, page, limit)
+
+    @staticmethod
+    async def _get_event_page(
+        query: dict[str, Any],
+        page: int,
+        limit: int,
+    ) -> dict[str, Any]:
+        cache_payload = {"page": page, "limit": limit, "query": query}
+        cache_json = json.dumps(cache_payload, default=str, sort_keys=True)
+        cache_hash = hashlib.sha256(cache_json.encode()).hexdigest()[:20]
+        cache_key = f"events:list:{cache_hash}"
         redis = get_redis()
-        cache_key = f"events:list:page:{page}:limit:{limit}"
-        
-        # Check cache
-        try:
-            cached_data = await redis.get(cache_key)
-            if cached_data:
-                return json.loads(cached_data)
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Redis cache read failed: {e}")
-            
+
+        if redis is not None:
+            try:
+                cached_data = await redis.get(cache_key)
+                if cached_data:
+                    return json.loads(cached_data)
+            except RedisError:
+                logger.warning("Redis cache read failed", exc_info=True)
+
         db = get_database()
         skip = (page - 1) * limit
-        
-        # Query active and upcoming events
-        query = {"isDeleted": False}
         total_events = await db.events.count_documents(query)
-        cursor = db.events.find(query).sort("eventDate", 1).skip(skip).limit(limit)
-        
-        events = []
-        async for doc in cursor:
-            events.append(EventResponse(**doc).model_dump(by_alias=True))
-            
-        # Serialize datetime objects using a custom encoder or convert them earlier
-        # EventResponse.model_dump handles the conversion if properly configured, but let's ensure JSON serializability
-        # model_dump(mode='json') handles datetime
-        events_json = []
-        cursor = db.events.find(query).sort("eventDate", 1).skip(skip).limit(limit)
-        async for doc in cursor:
-            events_json.append(EventResponse(**doc).model_dump(mode='json', by_alias=True))
-            
+        cursor = (
+            db.events.find(query)
+            .sort("eventDate", 1)
+            .skip(skip)
+            .limit(limit)
+        )
+        items = [
+            EventResponse(**document).model_dump(mode="json", by_alias=True)
+            async for document in cursor
+        ]
         result = {
-            "events": events_json,
+            "items": items,
             "pagination": {
                 "page": page,
                 "limit": limit,
                 "total": total_events,
-                "totalPages": (total_events + limit - 1) // limit
-            }
+                "totalPages": (total_events + limit - 1) // limit,
+            },
         }
-        
-        # Set cache
-        try:
-            await redis.setex(cache_key, 300, json.dumps(result))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Redis cache write failed: {e}")
-            
+        if redis is not None:
+            try:
+                await redis.set(
+                    cache_key,
+                    json.dumps(result),
+                    ex=settings.EVENT_CACHE_TTL_SECONDS,
+                )
+            except RedisError:
+                logger.warning("Redis cache write failed", exc_info=True)
         return result
 
     @staticmethod
-    async def get_event(event_id: str) -> Dict[str, Any]:
+    async def get_event(event_id: str) -> dict[str, Any]:
         db = get_database()
-        try:
-            obj_id = ObjectId(event_id)
-        except Exception:
-            raise AppException(code="INVALID_ID", message="Invalid event ID format", status_code=400)
-            
+        obj_id = parse_object_id(event_id, "event")
         event = await db.events.find_one({"_id": obj_id, "isDeleted": False})
         if not event:
-            raise AppException(code="EVENT_NOT_FOUND", message="Event not found", status_code=404)
-            
-        return EventResponse(**event).model_dump(mode='json', by_alias=True)
+            raise AppException(
+                code="EVENT_NOT_FOUND",
+                message="Event not found",
+                status_code=404,
+            )
+        return EventResponse(**event).model_dump(mode="json", by_alias=True)
 
     @staticmethod
-    async def search_events(q: str, page: int = 1, limit: int = 20) -> Dict[str, Any]:
-        db = get_database()
-        skip = (page - 1) * limit
-        
-        # Create text index if not exists (in a real app, do this on startup/migration)
-        # Assuming index exists. Simple regex search as fallback if text index is missing.
-        query = {
+    async def search_events(
+        q: str,
+        page: int = 1,
+        limit: int = 20,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        available_only: bool = False,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        pattern = re.escape(q.strip())
+        query: dict[str, Any] = {
             "isDeleted": False,
+            "eventDate": {"$gte": max(date_from or now, now)},
             "$or": [
-                {"name": {"$regex": q, "$options": "i"}},
-                {"category": {"$regex": q, "$options": "i"}},
-                {"location": {"$regex": q, "$options": "i"}}
-            ]
+                {"name": {"$regex": pattern, "$options": "i"}},
+                {"category": {"$regex": pattern, "$options": "i"}},
+                {"location": {"$regex": pattern, "$options": "i"}},
+            ],
         }
-        
-        total_events = await db.events.count_documents(query)
-        cursor = db.events.find(query).sort("eventDate", 1).skip(skip).limit(limit)
-        
-        events_json = []
-        async for doc in cursor:
-            events_json.append(EventResponse(**doc).model_dump(mode='json', by_alias=True))
-            
-        return {
-            "events": events_json,
-            "pagination": {
-                "page": page,
-                "limit": limit,
-                "total": total_events,
-                "totalPages": (total_events + limit - 1) // limit
-            }
-        }
+        if date_to is not None:
+            query["eventDate"]["$lte"] = date_to
+        if available_only:
+            query.update(
+                {
+                    "isRegistrationOpen": True,
+                    "registrationDeadline": {"$gte": now},
+                    "$expr": {"$lt": ["$registeredCount", "$capacity"]},
+                }
+            )
+        return await EventService._get_event_page(query, page, limit)

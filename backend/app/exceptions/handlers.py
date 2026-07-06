@@ -1,7 +1,13 @@
-from fastapi import Request, FastAPI
-from fastapi.responses import JSONResponse
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger(__name__)
+
 
 class AppException(Exception):
     def __init__(self, code: str, message: str, status_code: int = 400):
@@ -9,14 +15,15 @@ class AppException(Exception):
         self.message = message
         self.status_code = status_code
 
-def add_exception_handlers(app: FastAPI):
+
+def add_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException):
         return JSONResponse(
             status_code=exc.status_code,
             content={
                 "success": False,
-                "error": {"code": exc.code, "message": exc.message}
+                "error": {"code": exc.code, "message": exc.message},
             },
         )
 
@@ -29,8 +36,8 @@ def add_exception_handlers(app: FastAPI):
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "Invalid request parameters",
-                    "details": exc.errors()
-                }
+                    "details": jsonable_encoder(exc.errors()),
+                },
             },
         )
 
@@ -42,23 +49,24 @@ def add_exception_handlers(app: FastAPI):
                 "success": False,
                 "error": {
                     "code": "HTTP_ERROR",
-                    "message": exc.detail
-                }
+                    "message": str(exc.detail),
+                },
             },
         )
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception):
-        # In a real production app, log the actual exception here securely
-        import logging
-        logging.getLogger(__name__).error(f"Unhandled exception: {str(exc)}", exc_info=True)
+        logger.exception(
+            "Unhandled exception",
+            extra={"request_id": getattr(request.state, "request_id", None)},
+        )
         return JSONResponse(
             status_code=500,
             content={
                 "success": False,
                 "error": {
                     "code": "INTERNAL_SERVER_ERROR",
-                    "message": "An unexpected error occurred."
-                }
+                    "message": "An unexpected error occurred.",
+                },
             },
         )

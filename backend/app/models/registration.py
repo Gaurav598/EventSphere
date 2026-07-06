@@ -1,19 +1,23 @@
-from typing import Optional
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from app.models.pyobjectid import PyObjectId
 
+
 class RegistrationBase(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     userId: PyObjectId
     eventId: PyObjectId
-    status: str = "confirmed"
+    status: Literal["confirmed", "cancelled"] = "confirmed"
+
 
 class RegistrationInDB(RegistrationBase):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    id: PyObjectId | None = Field(alias="_id", default=None)
     registeredAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 class RegistrationResponse(RegistrationInDB):
     id: PyObjectId = Field(alias="_id")
-    
-    class Config:
-        populate_by_name = True
