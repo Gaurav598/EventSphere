@@ -319,7 +319,7 @@ class AdminService:
             {"$sort": {"registeredAt": -1}},
         ]
         registrations = []
-        cursor = db.registrations.aggregate(pipeline)
+        cursor = await db.registrations.aggregate(pipeline)
         async for document in cursor:
             registrations.append(
                 {
