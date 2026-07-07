@@ -4,6 +4,7 @@ import 'package:frontend/core/api_client.dart';
 import 'package:frontend/core/secure_storage.dart';
 import 'package:frontend/features/auth/models/user.dart';
 import 'package:frontend/features/auth/services/auth_service.dart';
+import 'package:frontend/core/websocket_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
@@ -29,6 +30,7 @@ class AuthProvider extends ChangeNotifier {
     if (token != null) {
       try {
         _user = await _authService.getMe();
+        WebSocketService().connect();
       } catch (e) {
         await SecureStorage.clearToken();
         _user = null;
@@ -45,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
       final token = data['accessToken'];
       await SecureStorage.setToken(token);
       _user = await _authService.getMe();
+      WebSocketService().connect();
       _setLoading(false);
       return true;
     } catch (e) {
@@ -92,7 +95,32 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await SecureStorage.clearToken();
     _user = null;
+    WebSocketService().disconnect();
     notifyListeners();
+  }
+
+  Future<bool> updateProfile(String? name, String? currentPassword, String? newPassword) async {
+    _setLoading(true);
+    try {
+      _user = await _authService.updateProfile(name, currentPassword, newPassword);
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      if (e is DioException && e.error is ApiException) {
+        _error = (e.error as ApiException).message;
+      } else if (e is DioException && e.response?.data != null) {
+        final data = e.response?.data;
+        if (data is Map && data['error'] is Map) {
+          _error = data['error']['message'];
+        } else {
+          _error = e.message;
+        }
+      } else {
+        _error = e.toString();
+      }
+      _setLoading(false);
+      return false;
+    }
   }
 
   void _setLoading(bool value) {

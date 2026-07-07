@@ -7,6 +7,8 @@ import 'package:frontend/shared/widgets/loading_view.dart';
 import 'package:frontend/shared/widgets/error_view.dart';
 import 'package:frontend/shared/widgets/empty_state_view.dart';
 import 'package:frontend/shared/widgets/animated_confirm_dialog.dart';
+import 'package:frontend/shared/widgets/animated_confirm_dialog.dart';
+import 'package:frontend/shared/widgets/animated_toast.dart';
 import 'package:frontend/shared/widgets/event_card.dart';
 import 'package:frontend/core/theme_provider.dart';
 
@@ -62,6 +64,10 @@ class _EventListScreenState extends State<EventListScreen> {
           IconButton(
             icon: Icon(themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode),
             onPressed: () => themeProvider.toggleTheme(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () => context.push('/profile'),
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -223,9 +229,7 @@ class _EventListScreenState extends State<EventListScreen> {
               if (eventId != null && context.mounted) {
                 context.push('/events/$eventId');
               } else if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(provider.error ?? 'Invalid Code')),
-                );
+                AnimatedToast.show(context, message: provider.error ?? 'Invalid Code', isError: true);
               }
             },
             child: const Text('JOIN'),

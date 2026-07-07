@@ -10,6 +10,9 @@ from app.models.event import EventCreate, EventUpdate
 class StatusUpdate(BaseModel):
     status: Literal["confirmed", "rejected"]
 
+class CheckinRequest(BaseModel):
+    registrationId: str
+
 router = APIRouter()
 
 # -----------------
@@ -94,6 +97,19 @@ async def update_registration_status(
         "success": True,
         "data": result,
         "message": f"Registration status updated to {payload.status}"
+    }
+
+@router.post("/events/{event_id}/checkin")
+async def checkin_attendee(
+    event_id: str,
+    payload: CheckinRequest,
+    current_admin: UserInDB = Depends(require_admin)
+):
+    result = await AdminService.checkin_attendee(event_id, payload.registrationId)
+    return {
+        "success": True,
+        "data": result,
+        "message": result["message"]
     }
 
 # -----------------

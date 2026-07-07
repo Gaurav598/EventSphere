@@ -131,33 +131,51 @@ class EventCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Icon(
-                            isFull ? Icons.group_off : Icons.group,
-                            size: 16,
-                            color: isFull ? theme.colorScheme.error : theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isFull ? 'Sold Out' : '$remainingSeats seats left',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: isFull ? theme.colorScheme.error : theme.colorScheme.primary,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        '${event.registeredCount} / ${event.capacity} Seats Filled',
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                      ElevatedButton(
-                        onPressed: isFull ? null : onTap,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      Text(
+                        '${(event.capacity > 0 ? (event.registeredCount / event.capacity * 100) : 0).toStringAsFixed(0)}%',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: isFull ? theme.colorScheme.error : theme.colorScheme.primary,
+                          fontWeight: FontWeight.bold,
                         ),
-                        child: Text(isFull ? 'FULL' : 'REGISTER'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 6),
+                  TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOut,
+                    tween: Tween<double>(
+                      begin: 0,
+                      end: event.capacity > 0 ? (event.registeredCount / event.capacity).clamp(0.0, 1.0) : 0,
+                    ),
+                    builder: (context, value, child) {
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: value,
+                          minHeight: 6,
+                          backgroundColor: theme.colorScheme.surfaceVariant,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            isFull ? theme.colorScheme.error : theme.colorScheme.primary,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: isFull ? null : onTap,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      child: Text(isFull ? 'SOLD OUT' : 'VIEW EVENT'),
+                    ),
                   ),
                 ],
               ),

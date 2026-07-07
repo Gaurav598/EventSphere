@@ -16,6 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _isPasswordVisible = false;
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
@@ -28,13 +29,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
-    if (success) {
-      if (authProvider.isAdmin) {
-        context.go('/admin');
-      } else {
-        context.go('/events');
-      }
-    } else {
+    if (!mounted) return;
+
+    if (!success) {
       if (authProvider.error == 'User not found') {
         AnimatedDialog.show(context, title: 'Not Found', message: 'We could not find an account with that email.', icon: Icons.person_off, color: Colors.orange);
       } else {
@@ -116,8 +113,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: InputDecoration(
                             labelText: 'Password', 
                             prefixIcon: Icon(Icons.lock_outline, color: Theme.of(context).colorScheme.primary),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _isPasswordVisible = !_isPasswordVisible;
+                                });
+                              },
+                            ),
                           ),
-                          obscureText: true,
+                          obscureText: !_isPasswordVisible,
                           validator: Validators.password,
                         ),
                         const SizedBox(height: 40),

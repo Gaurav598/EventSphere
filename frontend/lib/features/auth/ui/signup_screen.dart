@@ -18,6 +18,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isAdmin = false;
+  bool _isPasswordVisible = false;
 
   Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) return;
@@ -122,16 +123,26 @@ class _SignupScreenState extends State<SignupScreen> {
                           decoration: InputDecoration(
                             labelText: 'Password', 
                             prefixIcon: Icon(Icons.lock_outline, color: Theme.of(context).colorScheme.primary),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _isPasswordVisible = !_isPasswordVisible;
+                                });
+                              },
+                            ),
                           ),
-                          obscureText: true,
+                          obscureText: !_isPasswordVisible,
                           validator: Validators.password,
                         ),
                         const SizedBox(height: 20),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                        Material(
+                          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(12),
+                          clipBehavior: Clip.antiAlias,
                           child: SwitchListTile(
                             title: const Text('Register as Admin', style: TextStyle(fontWeight: FontWeight.w600)),
                             subtitle: const Text('Create and manage events', style: TextStyle(fontSize: 12)),

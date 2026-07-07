@@ -11,6 +11,7 @@ from app.core.identifiers import parse_object_id
 from app.db.mongo import get_database
 from app.db.redis_client import get_redis, invalidate_event_cache
 from app.exceptions.handlers import AppException
+from app.core.websocket_manager import manager
 from app.models.event import EventResponse
 from app.models.registration import RegistrationInDB, RegistrationResponse
 from app.models.ticket import TicketResponse
@@ -100,6 +101,9 @@ class RegistrationService:
                 registration_id=str(result.inserted_id),
                 timestamp=registration.registeredAt,
             )
+            
+        import asyncio
+        asyncio.create_task(manager.broadcast({"type": "REGISTRATION_UPDATE", "eventId": event_id}))
             
         return {
             "registrationId": str(result.inserted_id),

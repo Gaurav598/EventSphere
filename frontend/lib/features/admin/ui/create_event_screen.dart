@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:frontend/features/admin/providers/admin_provider.dart';
 import 'package:frontend/core/validators.dart';
 import 'package:flutter/services.dart';
+import 'package:frontend/shared/widgets/animated_toast.dart';
 
 class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen({super.key});
@@ -26,12 +27,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _eventDate == null || _registrationDeadline == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields and select dates.')));
+      AnimatedToast.show(context, message: 'Please fill all fields and select dates.', isError: true);
       return;
     }
 
     if (_registrationDeadline!.isAfter(_eventDate!)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration deadline cannot be after the event date.')));
+      AnimatedToast.show(context, message: 'Registration deadline cannot be after the event date.', isError: true);
       return;
     }
 
@@ -54,7 +55,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       context.pop();
     } else {
       final err = context.read<AdminProvider>().error ?? 'Failed to create event.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      AnimatedToast.show(context, message: err, isError: true);
     }
   }
 

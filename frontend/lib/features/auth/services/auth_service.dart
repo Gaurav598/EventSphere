@@ -28,4 +28,14 @@ class AuthService {
     final response = await dio.get('/auth/me');
     return User.fromJson(response.data['data']);
   }
+
+  Future<User> updateProfile(String? name, String? currentPassword, String? newPassword) async {
+    final data = <String, dynamic>{};
+    if (name != null) data['name'] = name;
+    if (currentPassword != null) data['currentPassword'] = currentPassword;
+    if (newPassword != null) data['newPassword'] = newPassword;
+
+    final response = await dio.put('/auth/me', data: data);
+    return User.fromJson(response.data['data']);
+  }
 }

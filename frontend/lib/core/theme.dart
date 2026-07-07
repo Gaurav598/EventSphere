@@ -34,18 +34,18 @@ class AppTheme {
       scaffoldBackgroundColor: colorScheme.background,
       
       // Premium Typography
-      textTheme: GoogleFonts.interTextTheme(
+      textTheme: GoogleFonts.plusJakartaSansTextTheme(
         ThemeData(brightness: brightness).textTheme,
       ).copyWith(
-        displayLarge: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: colorScheme.onBackground),
-        displayMedium: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: colorScheme.onBackground),
-        displaySmall: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: colorScheme.onBackground),
-        headlineLarge: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: colorScheme.onBackground),
-        headlineMedium: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: colorScheme.onBackground),
-        titleLarge: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: colorScheme.onBackground),
-        titleMedium: GoogleFonts.inter(fontWeight: FontWeight.w500, color: colorScheme.onBackground),
-        bodyLarge: GoogleFonts.inter(color: colorScheme.onBackground.withOpacity(0.87)),
-        bodyMedium: GoogleFonts.inter(color: colorScheme.onBackground.withOpacity(0.87)),
+        displayLarge: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: colorScheme.onBackground),
+        displayMedium: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: colorScheme.onBackground),
+        displaySmall: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: colorScheme.onBackground),
+        headlineLarge: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, color: colorScheme.onBackground),
+        headlineMedium: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, color: colorScheme.onBackground),
+        titleLarge: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, color: colorScheme.onBackground),
+        titleMedium: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500, color: colorScheme.onBackground),
+        bodyLarge: GoogleFonts.plusJakartaSans(color: colorScheme.onBackground.withOpacity(0.87)),
+        bodyMedium: GoogleFonts.plusJakartaSans(color: colorScheme.onBackground.withOpacity(0.87)),
       ),
 
       appBarTheme: AppBarTheme(
@@ -54,7 +54,7 @@ class AppTheme {
         backgroundColor: Colors.transparent,
         scrolledUnderElevation: 0,
         iconTheme: IconThemeData(color: colorScheme.onBackground),
-        titleTextStyle: GoogleFonts.outfit(
+        titleTextStyle: GoogleFonts.plusJakartaSans(
           fontSize: 20,
           fontWeight: FontWeight.w600,
           color: colorScheme.onBackground,
@@ -70,7 +70,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: GoogleFonts.inter(
+          textStyle: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.5,
@@ -85,7 +85,7 @@ class AppTheme {
             borderRadius: BorderRadius.circular(12),
           ),
           side: const BorderSide(color: primaryColor, width: 2),
-          textStyle: GoogleFonts.inter(
+          textStyle: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -95,7 +95,7 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          textStyle: GoogleFonts.inter(
+          textStyle: GoogleFonts.plusJakartaSans(
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -121,8 +121,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: errorColor, width: 1.5),
         ),
-        labelStyle: GoogleFonts.inter(color: colorScheme.onSurface.withOpacity(0.7)),
-        hintStyle: GoogleFonts.inter(color: colorScheme.onSurface.withOpacity(0.4)),
+        labelStyle: GoogleFonts.plusJakartaSans(color: colorScheme.onSurface.withOpacity(0.7)),
+        hintStyle: GoogleFonts.plusJakartaSans(color: colorScheme.onSurface.withOpacity(0.4)),
       ),
 
       cardTheme: CardThemeData(
@@ -141,12 +141,12 @@ class AppTheme {
         ),
         elevation: 24,
         backgroundColor: colorScheme.surface,
-        titleTextStyle: GoogleFonts.outfit(
+        titleTextStyle: GoogleFonts.plusJakartaSans(
           fontSize: 22,
           fontWeight: FontWeight.w600,
           color: colorScheme.onSurface,
         ),
-        contentTextStyle: GoogleFonts.inter(
+        contentTextStyle: GoogleFonts.plusJakartaSans(
           fontSize: 16,
           color: colorScheme.onSurface.withOpacity(0.8),
         ),
@@ -163,8 +163,8 @@ class AppTheme {
         backgroundColor: colorScheme.surface,
         selectedItemColor: primaryColor,
         unselectedItemColor: colorScheme.onSurface.withOpacity(0.5),
-        selectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 12),
-        unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 12),
+        selectedLabelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, fontSize: 12),
+        unselectedLabelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500, fontSize: 12),
         type: BottomNavigationBarType.fixed,
       ),
     );

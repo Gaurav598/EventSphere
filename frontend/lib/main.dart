@@ -23,6 +23,7 @@ import 'package:frontend/features/admin/providers/admin_provider.dart';
 import 'package:frontend/features/auth/ui/splash_screen.dart';
 import 'package:frontend/features/auth/ui/login_screen.dart';
 import 'package:frontend/features/auth/ui/signup_screen.dart';
+import 'package:frontend/features/auth/ui/profile_screen.dart';
 
 // UI - User
 import 'package:frontend/features/events/ui/event_list_screen.dart';
@@ -36,6 +37,7 @@ import 'package:frontend/features/admin/ui/admin_dashboard.dart';
 import 'package:frontend/features/admin/ui/create_event_screen.dart';
 import 'package:frontend/features/admin/ui/edit_event_screen.dart';
 import 'package:frontend/features/admin/ui/event_registrations_screen.dart';
+import 'package:frontend/features/admin/ui/qr_scanner_screen.dart';
 
 import 'package:frontend/features/events/models/event.dart';
 
@@ -107,10 +109,11 @@ class _EventSphereAppState extends State<EventSphereApp> {
         }
 
         final isAdminRoute = state.matchedLocation.startsWith('/admin');
+        final isProfileRoute = state.matchedLocation == '/profile';
         if (isAdminRoute && !isAdmin) {
           return '/events';
         }
-        if (!isAdminRoute && isAdmin && state.matchedLocation != '/') {
+        if (!isAdminRoute && !isProfileRoute && isAdmin && state.matchedLocation != '/') {
           return '/admin';
         }
 
@@ -132,6 +135,10 @@ class _EventSphereAppState extends State<EventSphereApp> {
         GoRoute(
           path: '/events',
           builder: (context, state) => const EventListScreen(),
+        ),
+        GoRoute(
+          path: '/profile',
+          builder: (context, state) => const ProfileScreen(),
         ),
         GoRoute(
           path: '/events/:id',
@@ -171,6 +178,13 @@ class _EventSphereAppState extends State<EventSphereApp> {
           builder: (context, state) {
             final event = state.extra as Event;
             return EventRegistrationsScreen(event: event);
+          },
+        ),
+        GoRoute(
+          path: '/admin/events/:id/scan',
+          builder: (context, state) {
+            final eventId = state.pathParameters['id']!;
+            return QRScannerScreen(eventId: eventId);
           },
         ),
       ],

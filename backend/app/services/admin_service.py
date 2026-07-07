@@ -9,6 +9,8 @@ from typing import Any
 from pymongo import ReturnDocument
 
 from app.core.identifiers import parse_object_id
+from app.core.config import settings
+from app.core.websocket_manager import manager
 from app.db.mongo import get_database
 from app.db.redis_client import invalidate_event_cache
 from app.exceptions.handlers import AppException
@@ -262,8 +264,39 @@ class AdminService:
                 {"_id": reg_obj_id},
                 {"$set": {"status": "rejected"}}
             )
+        
+        # Broadcast the update
+        import asyncio
+        asyncio.create_task(manager.broadcast({"type": "REGISTRATION_UPDATE", "eventId": str(event_id)}))
             
         return {"status": new_status}
+
+    @staticmethod
+    async def checkin_attendee(event_id: str, registration_id: str) -> dict[str, Any]:
+        db = get_database()
+        event_obj_id = parse_object_id(event_id, "event")
+        reg_obj_id = parse_object_id(registration_id, "registration")
+        
+        reg = await db.registrations.find_one({"_id": reg_obj_id, "eventId": event_obj_id})
+        if not reg:
+            raise AppException(code="REGISTRATION_NOT_FOUND", message="Registration not found for this event", status_code=404)
+        
+        if reg.get("status") == "attended":
+            raise AppException(code="ALREADY_CHECKED_IN", message="User has already checked in", status_code=400)
+            
+        if reg.get("status") != "confirmed":
+            raise AppException(code="INVALID_STATUS", message="Registration is not confirmed", status_code=400)
+            
+        await db.registrations.update_one(
+            {"_id": reg_obj_id},
+            {"$set": {"status": "attended", "attendedAt": datetime.now(timezone.utc)}}
+        )
+        
+        # Broadcast the update
+        import asyncio
+        asyncio.create_task(manager.broadcast({"type": "REGISTRATION_UPDATE", "eventId": str(event_obj_id)}))
+        
+        return {"status": "attended", "message": "Successfully checked in"}
 
     @staticmethod
     async def get_event_registrations(
@@ -355,7 +388,7 @@ class AdminService:
             {"$unwind": "$event"},
         ]
         results = []
-        cursor = db.registrations.aggregate(pipeline)
+        cursor = await db.registrations.aggregate(pipeline)
         async for document in cursor:
             results.append(
                 {
@@ -391,7 +424,7 @@ class AdminService:
             },
             {"$sort": {"count": -1}},
         ]
-        cursor = db.registrations.aggregate(pipeline)
+        cursor = await db.registrations.aggregate(pipeline)
         return [
             {"category": document["_id"], "count": document["count"]}
             async for document in cursor
@@ -424,18 +457,36 @@ class AdminService:
     @staticmethod
     async def get_analytics_summary() -> dict[str, Any]:
         db = get_database()
-        total_registrations, upcoming_events = await asyncio.gather(
-            db.registrations.count_documents({"status": "confirmed"}),
-            db.events.count_documents(
-                {
-                    "eventDate": {"$gte": datetime.now(timezone.utc)},
-                    "isDeleted": False,
-                }
-            ),
+        
+        pipeline = [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
+        cursor = await db.registrations.aggregate(pipeline)
+        
+        status_counts = {"pending": 0, "confirmed": 0, "rejected": 0}
+        total_requests = 0
+        async for doc in cursor:
+            status = doc.get("_id")
+            count = doc.get("count", 0)
+            if status in status_counts:
+                status_counts[status] = count
+            total_requests += count
+            
+        acceptance_rate = (status_counts["confirmed"] / total_requests * 100) if total_requests > 0 else 0.0
+
+        upcoming_events = await db.events.count_documents(
+            {
+                "eventDate": {"$gte": datetime.now(timezone.utc)},
+                "isDeleted": False,
+            }
         )
+        
         return {
-            "totalRegistrations": total_registrations,
+            "totalRegistrations": status_counts["confirmed"],
             "upcomingEventsCount": upcoming_events,
+            "pendingRegistrations": status_counts["pending"],
+            "confirmedRegistrations": status_counts["confirmed"],
+            "rejectedRegistrations": status_counts["rejected"],
+            "totalRequests": total_requests,
+            "acceptanceRate": round(acceptance_rate, 2),
         }
 
     @staticmethod

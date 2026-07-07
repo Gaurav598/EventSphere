@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:frontend/features/admin/providers/admin_provider.dart';
 import 'package:frontend/features/events/models/event.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:frontend/shared/widgets/loading_view.dart';
 import 'package:frontend/shared/widgets/empty_state_view.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:frontend/shared/widgets/animated_confirm_dialog.dart';
+import 'package:frontend/shared/widgets/animated_toast.dart';
+import 'dart:io';
 
 class EventRegistrationsScreen extends StatefulWidget {
   final Event event;
@@ -47,18 +53,31 @@ class _EventRegistrationsScreenState extends State<EventRegistrationsScreen> {
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri);
         } else {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not launch CSV export.')));
+          if (mounted) AnimatedToast.show(context, message: 'Could not launch CSV export.', isError: true);
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('CSV export is currently fully supported on Web. App export coming soon.')),
-        );
+        try {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/registrations_${widget.event.id}.csv');
+          await file.writeAsString(csvData);
+          
+          if (mounted) {
+            final box = context.findRenderObject() as RenderBox?;
+            await Share.shareXFiles(
+              [XFile(file.path)],
+              subject: '${widget.event.name} Registrations',
+              sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            AnimatedToast.show(context, message: 'Failed to save CSV: $e', isError: true);
+          }
+        }
       }
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to export registrations')),
-        );
+        AnimatedToast.show(context, message: 'Failed to export registrations', isError: true);
       }
     }
   }
@@ -69,13 +88,9 @@ class _EventRegistrationsScreenState extends State<EventRegistrationsScreen> {
     if (success && mounted) {
       await _loadRegistrations();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration $status!')),
-      );
+      AnimatedToast.show(context, message: 'Registration $status!', isError: false);
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(provider.error ?? 'Failed to update status')),
-      );
+      AnimatedToast.show(context, message: provider.error ?? 'Failed to update status', isError: true);
     }
   }
 
@@ -91,12 +106,40 @@ class _EventRegistrationsScreenState extends State<EventRegistrationsScreen> {
     final confirmed = _registrations?.where((r) => r['status'] == 'confirmed').toList() ?? [];
     final pending = _registrations?.where((r) => r['status'] == 'pending').toList() ?? [];
 
+    final bool isPrivate = widget.event.isPrivate;
+
+    if (!isPrivate) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('${widget.event.name} Registrations'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.qr_code_scanner),
+              onPressed: () => context.push('/admin/events/${widget.event.id}/scan'),
+              tooltip: 'Scan Ticket',
+            ),
+            IconButton(
+              icon: const Icon(Icons.download),
+              onPressed: _exportCsv,
+              tooltip: 'Export CSV',
+            )
+          ],
+        ),
+        body: _buildList(confirmed, false),
+      );
+    }
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: Text('${widget.event.name} Registrations'),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.qr_code_scanner),
+              onPressed: () => context.push('/admin/events/${widget.event.id}/scan'),
+              tooltip: 'Scan Ticket',
+            ),
             IconButton(
               icon: const Icon(Icons.download),
               onPressed: _exportCsv,
@@ -140,17 +183,39 @@ class _EventRegistrationsScreenState extends State<EventRegistrationsScreen> {
                   children: [
                     IconButton(
                       icon: const Icon(Icons.check, color: Colors.green),
-                      onPressed: () => _updateStatus(reg['_id'] ?? reg['id'], 'confirmed'),
+                      onPressed: () => _updateStatus(reg['registrationId'] ?? reg['_id'] ?? reg['id'], 'confirmed'),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close, color: Colors.red),
-                      onPressed: () => _updateStatus(reg['_id'] ?? reg['id'], 'rejected'),
+                      onPressed: () => _updateStatus(reg['registrationId'] ?? reg['_id'] ?? reg['id'], 'rejected'),
                     ),
                   ],
                 )
-              : Text(
-                  reg['status']?.toUpperCase() ?? '',
-                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      reg['status']?.toUpperCase() ?? '',
+                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      tooltip: 'Cancel Registration',
+                      onPressed: () async {
+                        final confirm = await AnimatedConfirmDialog.show(
+                          context,
+                          title: 'Cancel Ticket',
+                          message: 'Are you sure you want to cancel this registration? The user will be rejected.',
+                          icon: Icons.cancel_outlined,
+                          color: Colors.red,
+                        );
+                        if (confirm && context.mounted) {
+                          _updateStatus(reg['registrationId'] ?? reg['_id'] ?? reg['id'], 'rejected');
+                        }
+                      },
+                    ),
+                  ],
                 ),
         );
       },

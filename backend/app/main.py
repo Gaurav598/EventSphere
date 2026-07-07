@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
@@ -23,6 +23,7 @@ from app.db.redis_client import (
 from app.exceptions.handlers import add_exception_handlers
 from app.middleware.logging_middleware import LoggingMiddleware
 from app.routers import admin, auth, events, registrations
+from app.core.websocket_manager import manager
 
 setup_logging()
 
@@ -126,3 +127,13 @@ app.include_router(
     prefix=f"{settings.API_V1_STR}/admin",
     tags=["admin"],
 )
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive, though we only broadcast server-to-client
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)

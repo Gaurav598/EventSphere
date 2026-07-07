@@ -69,3 +69,34 @@ class AuthService:
             "accessToken": access_token,
             "tokenType": "bearer",
         }
+
+    @staticmethod
+    async def update_profile(user_id: str, name: str | None = None, current_password: str | None = None, new_password: str | None = None) -> dict[str, Any]:
+        from bson import ObjectId
+        db = get_database()
+        
+        try:
+            obj_id = ObjectId(user_id)
+        except Exception:
+            raise AppException(code="INVALID_USER_ID", message="Invalid User ID format", status_code=400)
+            
+        user = await db.users.find_one({"_id": obj_id})
+        if not user:
+            raise AppException(code="USER_NOT_FOUND", message="User not found", status_code=404)
+            
+        update_data = {}
+        if name:
+            update_data["name"] = name
+            
+        if new_password:
+            if not current_password:
+                raise AppException(code="PASSWORD_REQUIRED", message="Current password is required to set a new password", status_code=400)
+            if not verify_password(current_password, user["passwordHash"]):
+                raise AppException(code="INVALID_PASSWORD", message="Current password is incorrect", status_code=401)
+            update_data["passwordHash"] = get_password_hash(new_password)
+            
+        if update_data:
+            await db.users.update_one({"_id": obj_id}, {"$set": update_data})
+            
+        updated_user = await db.users.find_one({"_id": obj_id})
+        return UserResponse(**updated_user).model_dump(mode="json", by_alias=True)

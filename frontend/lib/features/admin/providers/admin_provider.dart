@@ -4,6 +4,8 @@ import 'package:frontend/core/models/paginated_response.dart';
 import 'package:frontend/features/events/models/event.dart';
 import 'package:frontend/features/admin/services/admin_service.dart';
 import 'package:frontend/core/api_client.dart';
+import 'package:frontend/core/websocket_service.dart';
+import 'dart:async';
 
 class AdminProvider extends ChangeNotifier {
   final AdminService _adminService;
@@ -18,8 +20,23 @@ class AdminProvider extends ChangeNotifier {
   List<dynamic> _categoryWise = [];
   List<dynamic> _monthlyTrend = [];
   bool _isAnalyticsLoading = false;
+  StreamSubscription? _wsSubscription;
 
-  AdminProvider(this._adminService);
+  AdminProvider(this._adminService) {
+    _wsSubscription = WebSocketService().stream.listen((message) {
+      if (message['type'] == 'REGISTRATION_UPDATE' || message['type'] == 'EVENT_UPDATE') {
+        // Silently refresh data
+        fetchMyEvents();
+        fetchAnalytics();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _wsSubscription?.cancel();
+    super.dispose();
+  }
 
   List<Event> get myEvents => _myEvents;
   Pagination? get pagination => _pagination;

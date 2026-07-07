@@ -11,6 +11,7 @@ import 'package:frontend/core/theme_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:frontend/shared/widgets/animated_confirm_dialog.dart';
+import 'package:frontend/shared/widgets/animated_toast.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -20,6 +21,10 @@ class AdminDashboard extends StatefulWidget {
 }
 
 class _AdminDashboardState extends State<AdminDashboard> {
+  final _searchController = TextEditingController();
+  String _selectedFilter = 'All';
+  final List<String> _filters = ['All', 'Upcoming', 'Private', 'Public'];
+
   @override
   void initState() {
     super.initState();
@@ -38,7 +43,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Admin Dashboard'),
           bottom: const TabBar(
@@ -51,6 +55,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
             IconButton(
               icon: Icon(themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode),
               onPressed: () => themeProvider.toggleTheme(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.person),
+              onPressed: () => context.push('/profile'),
             ),
             IconButton(
               icon: const Icon(Icons.logout),
@@ -70,20 +78,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
           ],
         ),
-        body: Container(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage('assets/images/auth_bg.png'),
-              fit: BoxFit.cover,
-              colorFilter: ColorFilter.mode(Colors.black54, BlendMode.darken),
-            ),
-          ),
-          child: TabBarView(
-            children: [
-              _buildEventsTab(adminProvider),
-              _buildAnalyticsTab(adminProvider),
-            ],
-          ),
+        body: TabBarView(
+          children: [
+            _buildEventsTab(adminProvider),
+            _buildAnalyticsTab(adminProvider),
+          ],
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () => context.push('/admin/create-event'),
@@ -106,15 +105,82 @@ class _AdminDashboardState extends State<AdminDashboard> {
         icon: Icons.event_note,
       );
     }
+    
+    var filteredEvents = adminProvider.myEvents.toList();
+    if (_searchController.text.isNotEmpty) {
+      final query = _searchController.text.toLowerCase();
+      filteredEvents = filteredEvents.where((e) => e.name.toLowerCase().contains(query)).toList();
+    }
+    if (_selectedFilter == 'Upcoming') {
+      filteredEvents = filteredEvents.where((e) => e.eventDate.isAfter(DateTime.now())).toList();
+    } else if (_selectedFilter == 'Private') {
+      filteredEvents = filteredEvents.where((e) => e.isPrivate).toList();
+    } else if (_selectedFilter == 'Public') {
+      filteredEvents = filteredEvents.where((e) => !e.isPrivate).toList();
+    }
+    
     return RefreshIndicator(
       onRefresh: () => adminProvider.fetchMyEvents(),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: adminProvider.myEvents.length,
-        itemBuilder: (context, index) {
-          final event = adminProvider.myEvents[index];
-          final theme = Theme.of(context);
-          return Card(
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search my events...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () => setState(() => _searchController.clear()),
+                            )
+                          : null,
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 40,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _filters.length,
+                      itemBuilder: (context, index) {
+                        final filter = _filters[index];
+                        final isSelected = _selectedFilter == filter;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: FilterChip(
+                            label: Text(filter),
+                            selected: isSelected,
+                            onSelected: (selected) => setState(() => _selectedFilter = filter),
+                            selectedColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                            checkmarkColor: Theme.of(context).colorScheme.primary,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (filteredEvents.isEmpty)
+            const SliverFillRemaining(
+              child: EmptyStateView(message: 'No events match your filters.', icon: Icons.filter_list_off),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final event = filteredEvents[index];
+                    final theme = Theme.of(context);
+                    return Card(
             clipBehavior: Clip.antiAlias,
             margin: const EdgeInsets.only(bottom: 24),
             child: Column(
@@ -233,7 +299,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ],
             ),
           );
-        },
+                  },
+                  childCount: filteredEvents.length,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -258,11 +329,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 16,
+            crossAxisSpacing: 16,
+            childAspectRatio: 1.2,
             children: [
-              Expanded(child: _buildStatCard('Registrations', summary['totalRegistrations'].toString(), Icons.people, theme.colorScheme.primary)),
-              const SizedBox(width: 16),
-              Expanded(child: _buildStatCard('Upcoming', summary['upcomingEventsCount'].toString(), Icons.event, theme.colorScheme.secondary)),
+              _buildStatCard('Confirmed', summary['confirmedRegistrations'].toString(), Icons.check_circle, Colors.green),
+              _buildStatCard('Pending', summary['pendingRegistrations'].toString(), Icons.hourglass_empty, Colors.orange),
+              _buildStatCard('Rejected', summary['rejectedRegistrations'].toString(), Icons.cancel, Colors.red),
+              _buildStatCard('Total Requests', summary['totalRequests'].toString(), Icons.group, theme.colorScheme.primary),
+              _buildStatCard('Acceptance', '${summary['acceptanceRate']}%', Icons.analytics, Colors.blue),
             ],
           ),
           const SizedBox(height: 32),
@@ -314,11 +393,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            Icon(icon, size: 32, color: color),
-            const SizedBox(height: 12),
-            Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color)),
-            const SizedBox(height: 4),
-            Text(title, textAlign: TextAlign.center, style: TextStyle(color: color.withOpacity(0.8), fontWeight: FontWeight.w600)),
+            Icon(icon, size: 28, color: color),
+            const SizedBox(height: 8),
+            Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 2),
+            Text(title, textAlign: TextAlign.center, style: TextStyle(color: color.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -375,7 +454,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
             label: const Text('COPY CODE'),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: inviteCode));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite code copied to clipboard!')));
+              if (context.mounted) {
+                AnimatedToast.show(context, message: 'Invite code copied to clipboard!', isError: false);
+              }
               Navigator.of(ctx).pop();
             },
           ),

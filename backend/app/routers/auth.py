@@ -4,6 +4,13 @@ from app.dependencies.auth import get_current_user
 from app.dependencies.rate_limit import RateLimiter
 from app.models.user import UserCreate, UserInDB, UserLogin, UserResponse
 from app.services.auth_service import AuthService
+from pydantic import BaseModel
+from typing import Optional
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    currentPassword: Optional[str] = None
+    newPassword: Optional[str] = None
 
 router = APIRouter()
 login_rate_limiter = RateLimiter(key_prefix="login", limit=5, window=60)
@@ -36,4 +43,21 @@ async def get_me(current_user: UserInDB = Depends(get_current_user)):
         "success": True,
         "data": user_response.model_dump(mode="json", by_alias=True),
         "message": "User profile retrieved",
+    }
+
+@router.put("/me")
+async def update_profile(
+    profile_data: ProfileUpdate,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    result = await AuthService.update_profile(
+        user_id=str(current_user.id),
+        name=profile_data.name,
+        current_password=profile_data.currentPassword,
+        new_password=profile_data.newPassword
+    )
+    return {
+        "success": True,
+        "data": result,
+        "message": "User profile updated",
     }
